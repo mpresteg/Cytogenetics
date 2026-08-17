@@ -236,6 +236,38 @@ data that was given," not new validation.
 
 ---
 
+### 20. Clearer in-progress indicator for slow file loads (PDF/OCR)
+
+**Context**: `pdfFileInput` change handler in `backend/static/app.js`
+(around line 184). The only sign of work happening today is a text swap
+via `showUploadStatus('Reading "..."…')` — same small, muted-gray
+`.upload-status` paragraph (`backend/static/style.css` around line 200)
+used for the final result message, no visual distinction between "still
+working" and "done." For a text-layer PDF this resolves fast enough that
+it barely matters, but the OCR fallback (task 11,
+`extract_text_ocr_fallback` server-side) rasterizes and OCRs each
+image-only page and can take several seconds per page — during which nothing
+on screen changes, the upload button stays clickable, and a user has no way
+to tell "still working" from "silently did nothing." The plain-text `.txt`
+upload path (`fileInput` handler, same file) is synchronous/instant and
+doesn't need this.
+
+**Done when**: while a PDF upload request is in flight, the UI shows an
+unambiguous busy signal distinct from the resting/result state — e.g. a
+spinner or animated indicator alongside the status text, plus
+`upload-pdf-btn` (and ideally `pdf-file-input`) disabled for the duration
+so a second upload can't be started mid-request. The indicator clears and
+returns to normal on both success and failure (including the `catch`
+branch). Manually verify against a scanned/image-only PDF fixture (see
+`backend/tests/` OCR fixtures from task 11) where the delay is actually
+noticeable, not just a fast text-layer PDF.
+
+**Out of scope**: a real page-by-page progress bar (the backend doesn't
+currently report per-page progress to the client — that's a bigger,
+separate change); changing OCR performance itself.
+
+---
+
 ## In progress
 
 *(none)*
