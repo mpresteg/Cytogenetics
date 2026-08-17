@@ -132,6 +132,14 @@ plain-text version turns out to be insufficient.
 
 ---
 
+---
+
+## In progress
+
+*(none)*
+
+## Done
+
 ### 7. File upload of a list of cytogenetics strings
 
 **Context**: `backend/static/index.html` and `app.js`. Task 6 (batch mode)
@@ -154,13 +162,12 @@ text, one string per line, only); multi-file upload; drag-and-drop (fine
 as a fast-follow if trivial, but don't block this task on it); storing or
 re-serving the uploaded file.
 
----
-
-## In progress
-
-*(none)*
-
-## Done
+Done client-side, same pattern as task 6: an "Upload .txt file…" button
+reads the chosen file via `FileReader.readAsText`, drops the text into the
+existing textarea, and calls the existing `runParse()`. `main.py` /
+`iscn_parser.py` untouched; only `app.js`, `index.html`, and `style.css`
+changed. Verified in-browser with a 4-line file (3 valid + 1 garbage
+line) — all 4 rendered correctly, labeled "Input N of 4".
 
 ### 6. Batch / multi-string mode
 
