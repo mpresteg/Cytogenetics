@@ -124,7 +124,23 @@ first to see the raw response shape.
 
 **FISH:**
 - `nuc ish(...)` and `ish(...)` (standalone or attached to a karyotype
-  rearrangement like `ish t(9;22)(...)(ABL1+,BCR+)`)
+  rearrangement like `ish t(9;22)(...)(ABL1+,BCR+)`), including their own
+  trailing `[N]` cell count (interphase nuclei scored) — e.g.
+  `nuc ish(D21S259x3)[200]`.
+- **Combined karyotype + FISH clone**, ISCN's `<karyotype>[N].nuc ish
+  ...[M]` form — a period joining a karyotype clone to a FISH result for
+  the *same* cell population (as opposed to `/` for a genuinely different
+  clone), e.g. `46,XY[20].nuc ish 1p32(CDKN2Cx2),13q34(LAMP1x2)[200]`.
+  Parsed by splitting at the period (`COMBINED_KARYOTYPE_FISH_RE` in
+  `iscn_parser.py` — safe against colliding with a band sub-decimal like
+  `13q14.3`, since that's always followed by more digits, never the word
+  "ish") and merging the two halves into one clone: the karyotype's own
+  `cell_count` plus a separate `fish_cell_count` for the FISH clause's
+  count, and findings from both concatenated. Before this, the whole
+  string went through the plain karyotype parser, which has no notion of
+  a trailing FISH clause — everything from `nuc ish` onward silently
+  corrupted `sex_chromosomes` and every individual probe came back
+  "unrecognized."
 - Probe results: presence/absence (`ABL1+`, `BCR-`), copy number (`D21S259x3`),
   fusion (`ABL1 con BCR`)
 - **Reference notes:** a small, non-exhaustive lookup table (`PROBE_KNOWLEDGE`,
@@ -133,6 +149,11 @@ first to see the raw response shape.
   follicular lymphoma). Every such note is explicitly labeled "reference
   note, not diagnostic" in the output — this is a starting scaffold, not a
   validated knowledge base.
+- **Known gap:** in a multi-probe list written as `locus(PROBE),locus(PROBE),...`
+  (e.g. `1p32(CDKN2Cx2),13q34(LAMP1x2)`), the leading band-locus text
+  (`1p32`, `13q34`) isn't captured anywhere in the output — only what's
+  inside each probe's own parens. Pre-existing, not introduced by the
+  combined-clone work above; flagged, not yet fixed.
 
 **ISCN edition awareness (scaffold):** the API and UI accept an `edition`
 parameter (2016 / 2020 / 2024, default 2024). This does **not** fully model
@@ -207,18 +228,19 @@ confidence is worse than an honest "I don't understand this token."
 Two modules under `backend/tests/`, both stdlib `unittest`, both
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 62 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 69 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)
   and its `rob()` suggestion, mosaicism with cell counts, FISH probe
-  parsing (copy number / presence-absence / fusion) and the
-  knowledge-base notes, unrecognized-token handling, the edition
-  parameter, the case-level clinical assessment (each
-  malignancy-associated pattern, the complex-karyotype threshold, mosaic
-  clone attribution, and the no-flag paths), terminal-band plausibility
-  for every chromosome in `APPROX_TERMINAL_BANDS`, and the PDF
-  candidate-line detection heuristic (`find_candidate_iscn_lines()`).
+  parsing (copy number / presence-absence / fusion), FISH cell counts,
+  the combined karyotype+FISH clone form, and the knowledge-base notes,
+  unrecognized-token handling, the edition parameter, the case-level
+  clinical assessment (each malignancy-associated pattern, the
+  complex-karyotype threshold, mosaic clone attribution, and the no-flag
+  paths), terminal-band plausibility for every chromosome in
+  `APPROX_TERMINAL_BANDS`, and the PDF candidate-line detection heuristic
+  (`find_candidate_iscn_lines()`).
 - `test_pdf_extraction.py` — 3 tests, depends on `pypdf` (a real
   application dependency as of task 8, not a test-only addition).
   Builds small PDFs entirely in-code (raw PDF syntax, no external
@@ -238,7 +260,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-65 tests total, all passing as of this build — I ran them in the sandbox
+72 tests total, all passing as of this build — I ran them in the sandbox
 this was built in, they're not just claimed to pass.
 
 ## Working on this repo

@@ -257,6 +257,7 @@ function renderClones(data, container) {
       metaBits.push('FISH-only clone (no karyotype count given)');
     }
     if (clone.cell_count != null) metaBits.push(`${clone.cell_count} cells`);
+    if (clone.fish_cell_count != null) metaBits.push(`${clone.fish_cell_count} FISH nuclei`);
     const meta = document.createElement('div');
     meta.className = 'meta-row';
     meta.textContent = metaBits.join(' · ');

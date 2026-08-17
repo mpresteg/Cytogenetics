@@ -195,6 +195,11 @@ class CloneResult:
     fish_only: bool
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    # Only set for a combined "<karyotype>[N].nuc ish ...[M]" clone (see
+    # parse_combined_karyotype_and_fish()) — the FISH clause's own cell
+    # count (e.g. interphase nuclei scored), distinct from `cell_count`
+    # (the karyotype clause's metaphase count).
+    fish_cell_count: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -555,8 +560,17 @@ def interpret_fish_token(token: str) -> Finding:
 def parse_fish_only_clone(raw: str) -> CloneResult:
     """Parses an ISH-only string, e.g.
     'nuc ish(D13S319x1,LAMP1x2)' or 'ish t(9;22)(q34;q11.2)(ABL1+,BCR+)'
-    These have no leading modal chromosome number."""
+    These have no leading modal chromosome number, but may carry their own
+    trailing cell count, e.g. 'nuc ish(D21S259x3)[200]' — 200 interphase
+    nuclei scored, a number worth keeping since it's typically different
+    from (and larger than) a karyotype clone's metaphase count."""
     body = raw
+    cell_count = None
+    cc_match = re.search(r'\[(\d+)\]\s*$', body)
+    if cc_match:
+        cell_count = int(cc_match.group(1))
+        body = body[:cc_match.start()].strip()
+
     is_nuc = False
     if body.startswith("nuc ish"):
         is_nuc = True
@@ -584,7 +598,7 @@ def parse_fish_only_clone(raw: str) -> CloneResult:
                 findings.append(interpret_fish_token(p))
 
     return CloneResult(raw=raw, modal_number=None, modal_number_raw=None,
-                        sex_chromosomes=None, cell_count=None,
+                        sex_chromosomes=None, cell_count=cell_count,
                         findings=findings, fish_only=True, errors=errors)
 
 
@@ -874,6 +888,56 @@ def find_candidate_iscn_lines(text: str) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
+# Combined karyotype + FISH clone (ISCN's '<karyotype>.nuc ish ...' form)
+#
+# ISCN uses '/' to separate genuinely different clones (different cell
+# populations), but a bare '.' to join a karyotype clone to a FISH result
+# reported for that SAME cell population, e.g.:
+#   46,XY[20].nuc ish 1p32(CDKN2Cx2),13q34(LAMP1x2)[200]
+# — a 20-metaphase karyotype, followed by a 200-nucleus interphase FISH
+# panel on the same specimen. Before this, parse_iscn() had no concept of
+# this form at all: the whole string went through parse_karyotype_clone(),
+# which has no notion of a trailing FISH clause, so everything from
+# "nuc ish" onward got glued onto whatever top-level comma-token it
+# happened to fall into (usually corrupting sex_chromosomes) and every
+# individual FISH probe became "unrecognized".
+#
+# The '.' itself is unambiguous as a split point: real ISCN band sub-band
+# decimals (e.g. '13q14.3') are always followed by more digits, never by
+# the literal word "ish" — so searching for '.' immediately (optionally
+# across whitespace, including a stray newline from a line-wrapped paste)
+# followed by "ish"/"nuc ish" cannot collide with band notation.
+# ---------------------------------------------------------------------------
+
+COMBINED_KARYOTYPE_FISH_RE = re.compile(r'\.\s*(?=(?:nuc\s+ish|ish)\b)')
+
+
+def parse_combined_karyotype_and_fish(raw: str, split_match) -> CloneResult:
+    """Splits `raw` at `split_match` (a COMBINED_KARYOTYPE_FISH_RE match)
+    into a karyotype clause and a FISH clause, parses each with the
+    existing single-purpose functions, and merges them into one
+    CloneResult — same cell population, not a separate clone."""
+    karyo_part = raw[:split_match.start()].strip()
+    fish_part = raw[split_match.end():].strip()
+
+    karyo_clone = parse_karyotype_clone(karyo_part)
+    fish_clone = parse_fish_only_clone(fish_part)
+
+    return CloneResult(
+        raw=raw,
+        modal_number=karyo_clone.modal_number,
+        modal_number_raw=karyo_clone.modal_number_raw,
+        sex_chromosomes=karyo_clone.sex_chromosomes,
+        cell_count=karyo_clone.cell_count,
+        fish_cell_count=fish_clone.cell_count,
+        findings=karyo_clone.findings + fish_clone.findings,
+        fish_only=False,
+        errors=karyo_clone.errors + fish_clone.errors,
+        warnings=karyo_clone.warnings + fish_clone.warnings,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -889,8 +953,11 @@ def parse_iscn(raw: str, edition: str = DEFAULT_EDITION) -> Dict[str, Any]:
     clones = []
     for cs in clone_strings:
         cs = cs.strip()
+        combo_match = COMBINED_KARYOTYPE_FISH_RE.search(cs)
         if cs.startswith("ish") or cs.startswith("nuc ish"):
             clone = parse_fish_only_clone(cs)
+        elif combo_match:
+            clone = parse_combined_karyotype_and_fish(cs, combo_match)
         else:
             clone = parse_karyotype_clone(cs)
         clone_objs.append(clone)
