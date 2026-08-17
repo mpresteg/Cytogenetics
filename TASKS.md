@@ -274,6 +274,57 @@ separate change); changing OCR performance itself.
 
 ## Done
 
+### 19. CI workflow to run the test suite on every push/PR
+
+**Context**: User noticed the "CI" section on a GitHub PR showed nothing
+running, and the auto-merge checkbox couldn't be checked — there was no
+CI workflow in the repo at all (no `.github/workflows/`), so there was
+nothing to report a check. Test verification up to this point relied
+entirely on running the suite locally before every PR and stating the
+result in the PR body — real, but not independently verifiable by
+GitHub itself.
+
+**Done when**: a GitHub Actions workflow runs `backend/tests/`'s full
+suite on every push to `main` and every pull request, including the OCR
+tests, which need a real local Tesseract binary (no mocked fallback —
+see `test_ocr_extraction.py`'s module docstring).
+
+**Out of scope** (deferred, discussed but not requested this round):
+enabling the repo's "Allow auto-merge" setting, and branch protection
+requiring this check before merging into `main`. Without a required
+check, auto-merge would just merge immediately (nothing to wait for) —
+so this workflow existing is the prerequisite for either, not the whole
+picture. Branch protection would also need care not to break the
+existing convention of pushing `TASKS.md`-only edits straight to `main`
+without a PR.
+
+Done: `.github/workflows/tests.yml` — checks out the repo, sets up
+Python 3.12, installs Tesseract via `apt-get` (the same OS-level,
+non-pip dependency documented in `requirements.txt` and the README's
+"Running it" section), installs `backend/requirements.txt`, and runs
+`python3 -m unittest discover -s tests -v` from `backend/`. Triggers on
+push to `main` and on every pull request, so both the OCR path and the
+rest of the suite (94 tests total) run without relying on whoever's
+merging to have run them locally first.
+
+This workflow's first real run caught a genuine cross-environment bug
+in `test_ocr_extraction.py`, not a bug in this project's own code: the
+test fixture rendered its sample text with PIL's own bundled default
+font, and real Tesseract — on *both* the CI runner's older build (5.3.4,
+Ubuntu's apt package) and, once actually compared side by side, a newer
+local build too (5.5.3, Homebrew/macOS) — misread that font's "4" glyph
+as "A" (`"46,XY,"` → `"AG,XY,"` / `"A6,XY,"`), confirmed directly with a
+temporary debug step printing the raw OCR output before diagnosing.
+Switching to a real system font fixed it: `_load_test_font()` in
+`test_ocr_extraction.py` now tries a short list of well-known TrueType
+paths (DejaVu, Liberation, Arial) before falling back to PIL's default,
+and the CI workflow installs `fonts-dejavu-core` alongside
+`tesseract-ocr` so a real font is guaranteed present there. No font
+binary vendored into the repo — every path tried is either an
+OS-installable package or a common existing system font, consistent
+with treating Tesseract itself as a declared OS-level dependency rather
+than bundling a copy of it.
+
 ### 18. Consistent auto-parse behavior across input sources; show lab interpretation immediately on PDF upload
 
 **Context**: User observation from live use — the four ways to get text
