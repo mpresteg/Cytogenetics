@@ -283,6 +283,35 @@ service posture.
 
 ---
 
+### 12. Incorporate clinical review feedback on the hematologic-malignancy flag (task 9)
+
+**Context**: Task 9 added a case-level assessment (`MALIGNANCY_KNOWLEDGE`,
+`assess_case()` in `iscn_parser.py`) that flags karyotype findings
+recurrently associated with hematologic malignancy. Before that feature is
+trusted, it was sent out for clinical review — see the review document:
+https://claude.ai/code/artifact/eedf8fc3-071a-4d6b-9ede-715b86094b4a —
+which lays out five specific open questions: (1) whether matching should
+require the exact breakpoint band rather than just the chromosome pair,
+(2) whether the 9-entry reference table is itself accurate, (3) whether
+"3+ unrelated abnormalities" is the right complex-karyotype threshold,
+(4) whether "Reference note (not diagnostic)" is strong enough wording,
+(5) what's missing from the table. This task is blocked on that feedback
+arriving — see the review doc for the full framing of each question.
+
+**Done when**: clinician feedback has come back on the review document,
+and each of its five open questions has either been acted on (a code,
+table, or wording change) or explicitly resolved as "no change needed" —
+with the resolution recorded here. If band-level matching is requested
+(question 1), that's a real logic change to the matchers in
+`iscn_parser.py`, not just a data edit. Any resulting change gets test
+coverage the same as task 9's did.
+
+**Out of scope**: guessing at answers to the open questions without actual
+clinician input — if feedback hasn't arrived yet, this task stays exactly
+as blocked/under-review, not "resolved" preemptively.
+
+---
+
 ## In progress
 
 *(none)*
