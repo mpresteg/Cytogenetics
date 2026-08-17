@@ -202,6 +202,20 @@ reads as "nothing to report." Extracting anything beyond the karyotype
 string itself (patient name, specimen ID, etc.) is out of scope; see
 task 8 in `TASKS.md`.
 
+`find_candidate_iscn_lines()` also handles a real-world wrinkle,
+confirmed against an actual lab report PDF: some report-generation
+software hard-wraps a long ISCN string across several physical lines
+*within the PDF's own text layer* (nothing to do with OCR — this happens
+even when the page has a full, real text layer). Rather than grabbing
+only the first fragment, it recognizes when a candidate can't have
+legally ended where a physical line did (an unclosed `(`, a trailing
+`,`, or ending in the word `ish`, which ISCN grammar always follows with
+more content) and folds subsequent lines in — joined with no separator
+by default (most wraps land mid-token) except right after `ish`, which
+grammar guarantees a following space — capped
+(`MAX_CANDIDATE_CONTINUATION_LINES`) so it can never run away across an
+entire document. See task 16 in `TASKS.md`.
+
 **Case-level clinical assessment:** every parse also returns a top-level
 `assessment` (`assess_case()` in `iscn_parser.py`) that rolls the case's
 findings up into one plain-English summary, plus an explicit flag when a
@@ -228,7 +242,7 @@ confidence is worse than an honest "I don't understand this token."
 Two modules under `backend/tests/`, both stdlib `unittest`, both
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 69 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 74 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)
@@ -260,7 +274,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-72 tests total, all passing as of this build — I ran them in the sandbox
+77 tests total, all passing as of this build — I ran them in the sandbox
 this was built in, they're not just claimed to pass.
 
 ## Working on this repo

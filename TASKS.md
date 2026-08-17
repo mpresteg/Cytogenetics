@@ -263,6 +263,19 @@ ISCN string, glue it to the previous one") — too easy to silently
 misjoin two genuinely separate, intentional batch entries. See task 13's
 resolution notes for why this was deferred rather than attempted inline.
 
+**Update (task 16)**: a structurally-grounded version of exactly this —
+not a content guess, just "this can't have legally ended here" (unbalanced
+parens / trailing comma / ends in "ish") — turned out to work well for the
+*backend* PDF-text-extraction path (task 16), reconstructing a real
+hard-wrapped report string byte-for-byte correctly. The same technique
+(`_candidate_needs_continuation()` / `_continuation_separator()` in
+`iscn_parser.py`) is a reasonable starting point if this task is picked
+up — it would need porting to `app.js` (client-side, no access to the
+Python logic), and batch mode's "one line = one entry" contract is a
+stronger assumption to bend than PDF-text scanning's "no per-line
+contract at all," so re-validate the false-merge risk in that context
+before reusing it as-is.
+
 ---
 
 ### 15. Capture band-locus prefix in multi-probe nuc ish lists
@@ -296,6 +309,58 @@ data that was given," not new validation.
 *(none)*
 
 ## Done
+
+### 16. Fix multi-line ISCN strings in PDF text extraction
+
+**Context**: Bug report from live use, with a real (de-identified example)
+lab report PDF attached — task 8's `find_candidate_iscn_lines()` scans
+extracted PDF text line by line, and a real report-generation software
+(Warde Medical Laboratory's layout, confirmed against the actual PDF) hard-
+wraps a long ISCN string across several physical lines *within the PDF's
+own text layer*. Nothing to do with OCR (task 11) — every page of the
+reported PDF had a full, substantial text layer (1900+ characters), so
+OCR was never invoked; nothing to do with how the string was pasted
+anywhere either (task 14, still open, is the separate frontend/batch-mode
+version of this same underlying problem: line wraps in *pasted* text).
+`find_candidate_iscn_lines()`, before this fix, grabbed only the first
+physical line of a wrapped candidate and silently discarded everything
+after it — for the actual reported PDF, that meant capturing
+`"46,XY[20].nuc ish"` and losing the entire 15-probe FISH panel plus the
+final cell count.
+
+**Done when**: a candidate that can't have legally ended where a physical
+line did (an unclosed `(`, a trailing `,`, or ending in the word `ish` —
+structural signals, not content guesses) keeps folding subsequent lines
+in until none of those hold anymore, capped so it can never run away
+across an entire document. Verified against the actual reported PDF, not
+just a synthetic case.
+
+**Out of scope**: perfect reconstruction in every conceivable case — this
+is deliberately a structural, not semantic, heuristic; porting the same
+technique to fix task 14 (the frontend/batch-mode version of this
+problem) — different code (JS, no access to this Python logic) and a
+different risk profile (batch mode's "one line = one entry" is a
+stronger contract to bend than PDF text scanning's "no per-line contract
+at all").
+
+Done: `_candidate_needs_continuation()` checks the three structural
+signals above; `_continuation_separator()` joins with no separator by
+default (most real-world wraps land mid-token, e.g. `"TP53x"` + `"2"` →
+`"TP53x2"`) except right after `"ish"`, which ISCN grammar always follows
+with a space before the probe/rearrangement content — a narrow,
+grammar-grounded exception, not a guess.
+`MAX_CANDIDATE_CONTINUATION_LINES` (15) caps runaway consumption.
+
+6 new tests in `TestCandidateLineDetection` (77 total, all passing),
+including the exact real-world wrapped text from the reported PDF as a
+byte-for-byte reconstruction check, a capped-runaway case, and confirming
+a genuinely separate second candidate right after a terminated one still
+comes back as its own entry. Verified live end-to-end with the actual
+PDF file uploaded through the real UI (temporarily served via the dev
+server's static mount, removed after testing — never committed to the
+repo): both candidates found (the full FISH panel, correctly
+reconstructed, plus a separate plain `46,XY` from the report's
+"KARYOTYPES" section), both parsed cleanly with zero errors.
 
 ### 13. Support combined karyotype + FISH clone notation (period-joined)
 
