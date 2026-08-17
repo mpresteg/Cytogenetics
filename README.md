@@ -69,6 +69,10 @@ nuc ish(D13S319x1,LAMP1x2)
 ish t(9;22)(q34;q11.2)(ABL1+,BCR+)
 ```
 
+The textarea also accepts multiple strings at once, one per line (paste the
+block above as-is) — each line is parsed and rendered independently, labeled
+"Input N of M". See **Batch mode** below for how that's wired up.
+
 The interactive API docs (for testing the parser directly, or wiring up a
 different frontend later) are at **http://127.0.0.1:8000/docs**.
 
@@ -135,6 +139,18 @@ working from the actual ISCN volumes for each edition. What's implemented is
 the plumbing plus one illustrative example (`der()` vs `rob()` for
 Robertsonian translocations) to show where a real edition-difference table
 would plug in. See `EDITION_NOTES` in `iscn_parser.py`.
+
+**Batch mode:** the textarea accepts multiple ISCN strings, one per line.
+This is a **client-side loop over the existing single-string `/api/parse`
+endpoint** (`parseOne()`/`runParse()` in `app.js`), not a new batch endpoint
+— `main.py` and `iscn_parser.py` are untouched. Each line is fired as its
+own request (`Promise.all`), and each result renders as its own existing
+clone-card block, labeled "Input N of M" when there's more than one line.
+Reasoning: every line is already fully independent (its own errors,
+warnings, mosaic state), so there's no shared parsing state a batch endpoint
+would actually save; looping client-side keeps `iscn_parser.py`'s contract
+at "one ISCN string in, one result out," which is easier to reason about and
+test than adding a second, list-shaped API contract to maintain.
 
 Anything outside all of the above grammar is returned as
 `category: "unrecognized"` with an explicit warning — it's never silently
