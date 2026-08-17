@@ -72,8 +72,19 @@ input.addEventListener('keydown', (e) => {
 
 // File upload: reads a local plain-text file (one ISCN string per line —
 // same shape the textarea already expects) client-side via FileReader and
-// feeds it into the same batch-parse path used for pasted text. No upload
-// to the backend, nothing persisted.
+// loads it into the textarea for review. No upload to the backend,
+// nothing persisted.
+//
+// Deliberately does NOT auto-run parse, even though this content is read
+// verbatim rather than extracted/guessed at (contrast PDF/OCR). The
+// content still hasn't been seen *inside this tool* yet, same as a PDF
+// upload -- and unlike the example dropdown (picking a specific known
+// string from a visible list, which itself is the deliberate "run this"
+// action), there's no principled reason a file load should skip the
+// review step a paste or a PDF upload both require. One consistent rule
+// now: anything loaded from outside the box (paste, .txt, PDF) needs an
+// explicit Parse click; anything chosen from inside the box (the example
+// dropdown) runs immediately, since choosing it *is* the action.
 uploadBtn.addEventListener('click', () => fileInput.click());
 
 fileInput.addEventListener('change', () => {
@@ -82,15 +93,16 @@ fileInput.addEventListener('change', () => {
 
   // A .txt upload switches to a plain-text source with no PDF/OCR/lab-
   // report context, so drop anything left over from a previous PDF
-  // upload rather than show it stale.
+  // upload (including stale results from a previous document) rather
+  // than show it stale.
   hideOcrReviewPanel();
   currentLabInterpretation = undefined;
+  resultsEl.innerHTML = '';
 
   const reader = new FileReader();
   reader.onload = () => {
     input.value = reader.result;
-    showUploadStatus(`Loaded "${file.name}".`);
-    runParse();
+    showUploadStatus(`Loaded "${file.name}" — review before parsing.`);
   };
   reader.onerror = () => {
     showUploadStatus(`Could not read "${file.name}": ${reader.error}.`, true);
@@ -133,9 +145,17 @@ function showUploadStatus(message, isError = false) {
 // the parseable input.
 //
 // Also captures the lab's own written interpretation, if the PDF has one
-// (task 10) — held in currentLabInterpretation until the next Parse, so
-// it can be shown alongside this tool's generated assessment for the
-// user to compare. Never auto-compared or scored; just shown together.
+// (task 10) — held in currentLabInterpretation so it can be shown
+// alongside this tool's generated assessment for the user to compare.
+// Rendered immediately once extraction finishes, not gated behind
+// Parse: it comes straight from the PDF's own text, independent of
+// which candidate lines get parsed (or whether the user parses at all),
+// so there's no reason to hide it until Parse runs -- unlike candidates,
+// there's no "trust it less" reason to delay this one, just a "this info
+// exists" one. Parse re-renders the same panel afterward (see
+// runParse()) using this same currentLabInterpretation value, so the two
+// renders never disagree. Never auto-compared or scored; just shown
+// together for a human to read both.
 uploadPdfBtn.addEventListener('click', () => pdfFileInput.click());
 
 function hideOcrReviewPanel() {
@@ -168,6 +188,7 @@ pdfFileInput.addEventListener('change', async () => {
 
   hideOcrReviewPanel();
   currentLabInterpretation = undefined;
+  resultsEl.innerHTML = '';
   showUploadStatus(`Reading "${file.name}"…`);
   const formData = new FormData();
   formData.append('file', file);
@@ -182,6 +203,7 @@ pdfFileInput.addEventListener('change', async () => {
     const data = await res.json();
     currentLabInterpretation = data.lab_interpretation ?? null;
     currentLabInterpretationUsedOcr = !!data.lab_interpretation_used_ocr;
+    renderLabInterpretationPanel(currentLabInterpretation, currentLabInterpretationUsedOcr, resultsEl);
 
     if (data.candidates.length === 0) {
       showUploadStatus(`No karyotype-shaped lines found in "${file.name}" (${data.page_count} page(s)).`, true);
