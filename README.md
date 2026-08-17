@@ -162,30 +162,16 @@ notes, unrecognized-token handling, and the edition parameter. All 31 pass
 as of this build — I ran them in the sandbox this was built in, they're not
 just claimed to pass.
 
+## Working on this repo
+
+Ongoing work is tracked in `TASKS.md` — a backlog of self-contained tasks,
+each with the context to start from, an acceptance check, and an explicit
+out-of-scope list. Pick a task, follow the "How to pick up a task" steps at
+the top of that file (write tests first, run the suite, update this README
+if scope changed), and move it to `## Done` when it's finished.
+
 ## What I'd extend next
 
-Now that the items below are done, here's what's next in line:
-
-1. **Deeper `der()` grammar.** The decomposition handles the common cases
-   (single embedded rearrangement, whole-arm/Robertsonian form) but not
-   multi-step der() chains with several sequential events, or der()
-   describing a chromosome built from three or more source chromosomes.
-
-2. **Grow the band reference table and the probe knowledge table.** Both are
-   deliberately small scaffolds right now (a dozen chromosomes, a dozen
-   probes). Expanding either is low-risk, additive work — just more entries
-   in a dict — and pytest cases should be added alongside each addition.
-
-3. **Real ISCN edition differences.** The scaffold is wired up; what's
-   missing is a domain expert (or careful sourcing from the actual ISCN
-   text) working through what changed release-to-release and encoding those
-   as additional `EDITION_NOTES` / pattern-level flags.
-
-4. **Export / report generation.** A "copy interpretation as text" or
-   "export as PDF" button would make this usable in an actual reporting
-   workflow rather than just an exploratory tool.
-
-5. **Multi-string / batch mode.** Cytogenetics reports often list several
-   ISCN strings (one per specimen or per analysis). A textarea that accepts
-   one-per-line and shows results in sequence would be a quick, high-value UI
-   addition.
+See `TASKS.md` for the actively-tracked backlog (this used to be a plain
+list here, but that duplicated `TASKS.md` and the two would drift out of
+sync — `TASKS.md` is now the source of truth).
