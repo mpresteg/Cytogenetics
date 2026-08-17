@@ -4,3 +4,6 @@ venv/
 .venv/
 *.egg-info/
 .pytest_cache/
+
+# Eclipse IDE project metadata (local to whoever opens this as a workspace)
+.project
