@@ -18,7 +18,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from iscn_parser import parse_iscn  # noqa: E402
+from iscn_parser import parse_iscn, find_candidate_iscn_lines  # noqa: E402
 
 
 def first_finding(result, clone_idx=0):
@@ -357,6 +357,52 @@ class TestClinicalAssessment(unittest.TestCase):
     def test_empty_input_assessment_is_none(self):
         r = parse_iscn("")
         self.assertIsNone(r["assessment"])
+
+
+class TestCandidateLineDetection(unittest.TestCase):
+    """find_candidate_iscn_lines() — the text-scanning heuristic task 8's
+    PDF upload uses to surface candidate karyotype lines for review."""
+
+    def test_finds_single_candidate_in_report_prose(self):
+        text = (
+            "Patient: Jane Doe\n"
+            "Specimen: Peripheral blood\n"
+            "\n"
+            "Karyotype:\n"
+            "46,XY,t(9;22)(q34;q11.2)\n"
+            "\n"
+            "Interpretation: Consistent with CML."
+        )
+        self.assertEqual(find_candidate_iscn_lines(text), ["46,XY,t(9;22)(q34;q11.2)"])
+
+    def test_finds_multiple_candidates_in_order(self):
+        text = "Specimen 1: 46,XY\nSome notes here.\nSpecimen 2: 47,XY,+21\n"
+        self.assertEqual(
+            find_candidate_iscn_lines(text),
+            ["46,XY", "47,XY,+21"],
+        )
+
+    def test_no_candidates_in_plain_prose(self):
+        text = "This report contains no karyotype string at all, just notes."
+        self.assertEqual(find_candidate_iscn_lines(text), [])
+
+    def test_does_not_false_positive_on_similar_numbers(self):
+        # "2021," followed by a space then non-XY text should not match —
+        # no comma-adjacent XY-shaped token immediately follows.
+        text = "Specimen received in 2021, XYZ Laboratory reported the result."
+        self.assertEqual(find_candidate_iscn_lines(text), [])
+
+    def test_captures_rest_of_line_without_correction(self):
+        # Deliberately no auto-trimming of trailing prose caught on the
+        # same line — surfaced as-is for human review, per task 8's scope.
+        text = "Result: 46,XY normal male karyotype, no abnormality detected."
+        self.assertEqual(
+            find_candidate_iscn_lines(text),
+            ["46,XY normal male karyotype, no abnormality detected."],
+        )
+
+    def test_empty_text_returns_empty_list(self):
+        self.assertEqual(find_candidate_iscn_lines(""), [])
 
 
 class TestEdition(unittest.TestCase):

@@ -6,6 +6,8 @@ const editionSelect = document.getElementById('edition-select');
 const uploadBtn = document.getElementById('upload-btn');
 const fileInput = document.getElementById('file-input');
 const uploadStatus = document.getElementById('upload-status');
+const uploadPdfBtn = document.getElementById('upload-pdf-btn');
+const pdfFileInput = document.getElementById('pdf-file-input');
 
 async function loadEditions() {
   try {
@@ -87,6 +89,46 @@ function showUploadStatus(message, isError = false) {
   uploadStatus.className = isError ? 'upload-status error' : 'upload-status';
   uploadStatus.hidden = false;
 }
+
+// PDF report upload (task 8): sends the file to the backend (PDF text
+// extraction needs a Python library, so this can't be client-side the
+// way the .txt upload above is), gets back candidate karyotype-shaped
+// lines, and loads them into the textarea for review. Deliberately does
+// NOT auto-run parse the way the .txt upload does — text pulled from a
+// real-world PDF layout is a guess, not a trusted input, so the user
+// should see exactly what was found before anything gets interpreted.
+uploadPdfBtn.addEventListener('click', () => pdfFileInput.click());
+
+pdfFileInput.addEventListener('change', async () => {
+  const file = pdfFileInput.files[0];
+  if (!file) return;
+  pdfFileInput.value = '';
+
+  showUploadStatus(`Reading "${file.name}"…`);
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/api/extract-pdf', { method: 'POST', body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showUploadStatus(`Could not read "${file.name}": ${err.detail || res.statusText}`, true);
+      return;
+    }
+    const data = await res.json();
+    if (data.candidates.length === 0) {
+      showUploadStatus(`No karyotype-shaped lines found in "${file.name}" (${data.page_count} page(s)).`, true);
+      return;
+    }
+    input.value = data.candidates.join('\n');
+    const plural = data.candidates.length === 1 ? '' : 's';
+    showUploadStatus(
+      `Found ${data.candidates.length} candidate line${plural} in "${file.name}" — review before parsing.`
+    );
+  } catch (e) {
+    showUploadStatus(`Request failed: ${e}`, true);
+  }
+});
 
 async function parseOne(value) {
   const res = await fetch('/api/parse', {

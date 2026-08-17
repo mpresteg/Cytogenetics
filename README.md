@@ -161,6 +161,26 @@ and runs it through the same batch-parse path — no upload to the backend,
 nothing persisted. CSV/XLSX and other formats needing column-mapping are
 out of scope; see task 7 in `TASKS.md`.
 
+**PDF lab report upload:** an "Upload PDF report…" button sends the file
+to a new `POST /api/extract-pdf` endpoint — this one **can't** be
+client-side the way `.txt` upload is, since PDF text extraction needs a
+Python library (`pypdf`, chosen for having zero transitive dependencies
+of its own, in keeping with this project's minimal-dependency stance;
+`python-multipart` is also now required, since FastAPI's file-upload
+support depends on it). The endpoint extracts each page's embedded text
+(no OCR — text-layer PDFs only, see task 11 in `TASKS.md` for scanned
+reports) and scans it with `find_candidate_iscn_lines()` for substrings
+shaped like a karyotype string (a modal number immediately followed by a
+sex-chromosome constitution, e.g. `46,XY,`). Candidates are loaded into
+the batch textarea for review — **unlike** the `.txt` upload flow, this
+does **not** auto-run parse, since text pulled from a real-world PDF
+layout is a guess, not a trusted input, and the user should see exactly
+what was found before anything gets interpreted. A report with zero
+candidates says so plainly rather than leaving a blank textarea that
+reads as "nothing to report." Extracting anything beyond the karyotype
+string itself (patient name, specimen ID, etc.) is out of scope; see
+task 8 in `TASKS.md`.
+
 **Case-level clinical assessment:** every parse also returns a top-level
 `assessment` (`assess_case()` in `iscn_parser.py`) that rolls the case's
 findings up into one plain-English summary, plus an explicit flag when a
@@ -184,27 +204,42 @@ confidence is worse than an honest "I don't understand this token."
 
 ## Testing
 
-`backend/tests/test_iscn_parser.py` — 56 tests, stdlib `unittest` (zero
-dependencies, so it's runnable without `pip install` anything), also
-pytest-discoverable if that's your preferred runner.
+Two modules under `backend/tests/`, both stdlib `unittest`, both
+pytest-discoverable if that's your preferred runner:
+
+- `test_iscn_parser.py` — 62 tests, zero dependencies beyond the stdlib,
+  so it's runnable without `pip install` anything. Covers: normal
+  karyotypes, numerical abnormalities and the modal-number consistency
+  check, every structural token type, `der()` decomposition (both forms)
+  and its `rob()` suggestion, mosaicism with cell counts, FISH probe
+  parsing (copy number / presence-absence / fusion) and the
+  knowledge-base notes, unrecognized-token handling, the edition
+  parameter, the case-level clinical assessment (each
+  malignancy-associated pattern, the complex-karyotype threshold, mosaic
+  clone attribution, and the no-flag paths), terminal-band plausibility
+  for every chromosome in `APPROX_TERMINAL_BANDS`, and the PDF
+  candidate-line detection heuristic (`find_candidate_iscn_lines()`).
+- `test_pdf_extraction.py` — 3 tests, depends on `pypdf` (a real
+  application dependency as of task 8, not a test-only addition).
+  Builds small PDFs entirely in-code (raw PDF syntax, no external
+  PDF-authoring library or binary fixture files) and runs them through
+  the same extract-then-detect pipeline `/api/extract-pdf` uses: one
+  clean single-karyotype report, one with two karyotype lines, one with
+  none. Deliberately doesn't go through FastAPI's `TestClient` (which
+  needs `httpx`, not otherwise a dependency here) — the actual HTTP
+  route is verified by hand in the browser instead, consistent with how
+  this repo has always treated the FastAPI layer (see "A note on
+  testing" above).
 
 ```bash
 cd backend
-python3 -m unittest tests.test_iscn_parser -v
+python3 -m unittest discover -s tests -v
 # or, if you have pytest installed:
 pytest tests/ -v
 ```
 
-Covers: normal karyotypes, numerical abnormalities and the modal-number
-consistency check, every structural token type, `der()` decomposition (both
-forms) and its `rob()` suggestion, mosaicism with cell counts, FISH probe
-parsing (copy number / presence-absence / fusion) and the knowledge-base
-notes, unrecognized-token handling, the edition parameter, the case-level
-clinical assessment (each malignancy-associated pattern, the
-complex-karyotype threshold, mosaic clone attribution, and the no-flag
-paths), and terminal-band plausibility for every chromosome in
-`APPROX_TERMINAL_BANDS`. All 56 pass as of this build — I ran them in the
-sandbox this was built in, they're not just claimed to pass.
+65 tests total, all passing as of this build — I ran them in the sandbox
+this was built in, they're not just claimed to pass.
 
 ## Working on this repo
 
