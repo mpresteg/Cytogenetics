@@ -54,18 +54,40 @@ input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) runParse();
 });
 
+async function parseOne(value) {
+  const res = await fetch('/api/parse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ iscn: value, edition: editionSelect.value || undefined }),
+  });
+  return res.json();
+}
+
+// Batch mode is a client-side loop over the existing single-string
+// /api/parse endpoint, one request per non-blank line — no new backend
+// endpoint. The parser and API already model exactly one ISCN string per
+// call, and each line is independent (own errors/warnings/mosaic state),
+// so looping client-side avoids inventing a batch request/response shape
+// in main.py for what is really just "run parse N times".
 async function runParse() {
-  const value = input.value.trim();
-  if (!value) return;
+  const lines = input.value.split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return;
   resultsEl.innerHTML = '<p class="placeholder">Parsing…</p>';
   try {
-    const res = await fetch('/api/parse', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ iscn: value, edition: editionSelect.value || undefined }),
+    const results = await Promise.all(lines.map(parseOne));
+    resultsEl.innerHTML = '';
+    results.forEach((data, idx) => {
+      const block = document.createElement('div');
+      block.className = 'batch-block';
+      if (lines.length > 1) {
+        const label = document.createElement('p');
+        label.className = 'batch-label';
+        label.textContent = `Input ${idx + 1} of ${lines.length}`;
+        block.appendChild(label);
+      }
+      renderClones(data, block);
+      resultsEl.appendChild(block);
     });
-    const data = await res.json();
-    render(data);
   } catch (e) {
     resultsEl.innerHTML = `<p class="errors">Request failed: ${e}</p>`;
   }
@@ -77,11 +99,16 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
-function render(data) {
-  resultsEl.innerHTML = '';
-
+// Renders one /api/parse result (mosaic banner + clone cards) into the
+// given container. Split out from runParse so batch mode can render each
+// line's result into its own labeled block using the same markup as
+// single-string mode.
+function renderClones(data, container) {
   if (data.errors && data.errors.length && (!data.clones || data.clones.length === 0)) {
-    resultsEl.innerHTML = `<div class="errors">${escapeHtml(data.errors.join(' '))}</div>`;
+    const errBox = document.createElement('div');
+    errBox.className = 'errors';
+    errBox.textContent = data.errors.join(' ');
+    container.appendChild(errBox);
     return;
   }
 
@@ -89,7 +116,7 @@ function render(data) {
     const banner = document.createElement('p');
     banner.className = 'mosaic-banner';
     banner.innerHTML = `<span class="badge mosaic">Mosaic</span> ${data.clone_count} clones detected`;
-    resultsEl.appendChild(banner);
+    container.appendChild(banner);
   }
 
   data.clones.forEach((clone, idx) => {
@@ -159,7 +186,7 @@ function render(data) {
       card.appendChild(fEl);
     });
 
-    resultsEl.appendChild(card);
+    container.appendChild(card);
   });
 }
 

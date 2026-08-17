@@ -132,6 +132,14 @@ plain-text version turns out to be insufficient.
 
 ---
 
+---
+
+## In progress
+
+*(none)*
+
+## Done
+
 ### 6. Batch / multi-string mode
 
 **Context**: `backend/static/index.html`, `app.js`, and `main.py`'s
@@ -147,12 +155,6 @@ the commit message.
 
 **Out of scope**: saving/persisting batch results, CSV import/export.
 
----
-
-## In progress
-
-*(none)*
-
-## Done
-
-*(none yet)*
+Done client-side (loop over `/api/parse` per line, `Promise.all`) — see
+README's "Batch mode" section for the reasoning. `main.py` / `iscn_parser.py`
+untouched; only `app.js`, `index.html`, and `style.css` changed.
