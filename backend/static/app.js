@@ -8,6 +8,7 @@ const fileInput = document.getElementById('file-input');
 const uploadStatus = document.getElementById('upload-status');
 const uploadPdfBtn = document.getElementById('upload-pdf-btn');
 const pdfFileInput = document.getElementById('pdf-file-input');
+const ocrReviewPanel = document.getElementById('ocr-review-panel');
 
 async function loadEditions() {
   try {
@@ -69,6 +70,10 @@ fileInput.addEventListener('change', () => {
   const file = fileInput.files[0];
   if (!file) return;
 
+  // A .txt upload has no PDF/OCR context, so drop any leftover OCR
+  // caution from a previous PDF upload rather than show a stale one.
+  hideOcrReviewPanel();
+
   const reader = new FileReader();
   reader.onload = () => {
     input.value = reader.result;
@@ -98,25 +103,53 @@ function showUploadStatus(message, isError = false) {
 // into the textarea for review. Deliberately does NOT auto-run parse the
 // way the .txt upload does — text pulled from a real-world PDF layout is
 // a guess, not a trusted input, so the user should see exactly what was
-// found before anything gets interpreted. OCR-sourced lines get an extra
-// prefix marker: OCR's error rate on dense, punctuation-heavy ISCN
-// strings is materially higher than direct text extraction, so those
-// need *more* scrutiny before parsing, not the same amount — the prefix
-// isn't a valid modal-number token, so an unedited OCR line always comes
-// back marked "Needs review" with a visible error on that first token if
-// the user clicks Parse without editing it first, rather than silently
-// looking indistinguishable from a clean parse. (It doesn't necessarily
-// blank out every downstream finding — comma-split tokens after the
-// mangled prefix can still parse correctly on their own, which is fine:
-// the point is that nothing here is presented as trustworthy without a
-// visible flag, not that parsing must fail outright.)
+// found before anything gets interpreted.
+//
+// OCR's error rate on dense, punctuation-heavy ISCN strings is materially
+// higher than direct text extraction, so OCR-sourced lines need *more*
+// scrutiny before parsing, not the same amount. An earlier version of
+// this flagged that by prefixing those lines with "# OCR — verify
+// against original: " directly in the textarea — but that mutated the
+// actual parseable content: the prefix isn't valid ISCN syntax, so
+// Parse would reliably fail on that line even after the user had
+// reviewed and confirmed it was fine, unless they first hand-edited the
+// prefix back out. The textarea is meant to hold exactly what a user
+// would type or paste themselves, ready to parse — not content we've
+// decorated. So instead: the textarea gets the plain, unmodified
+// extracted text, and OCR provenance is called out separately, in
+// ocrReviewPanel (see renderOcrReviewPanel below) — visible, but outside
+// the parseable input.
 uploadPdfBtn.addEventListener('click', () => pdfFileInput.click());
+
+function hideOcrReviewPanel() {
+  ocrReviewPanel.hidden = true;
+  ocrReviewPanel.innerHTML = '';
+}
+
+// Lists the OCR-sourced candidate lines (raw text, unmodified) in their
+// own panel below the upload status, separate from the textarea, so the
+// caution to double-check them against the original document is visible
+// without touching what actually gets parsed. Hidden entirely when no
+// candidate came from OCR.
+function renderOcrReviewPanel(ocrCandidates) {
+  if (!ocrCandidates.length) {
+    hideOcrReviewPanel();
+    return;
+  }
+  const plural = ocrCandidates.length === 1 ? '' : 's';
+  ocrReviewPanel.innerHTML = `
+    <p>${ocrCandidates.length} line${plural} came from OCR — verify against the original document before parsing:</p>
+    <ul>${ocrCandidates.map(c => `<li>${escapeHtml(c.text)}</li>`).join('')}</ul>
+  `;
+  ocrReviewPanel.hidden = false;
+}
 
 pdfFileInput.addEventListener('change', async () => {
   const file = pdfFileInput.files[0];
   if (!file) return;
   pdfFileInput.value = '';
 
+  hideOcrReviewPanel();
   showUploadStatus(`Reading "${file.name}"…`);
   const formData = new FormData();
   formData.append('file', file);
@@ -134,20 +167,19 @@ pdfFileInput.addEventListener('change', async () => {
       return;
     }
 
-    input.value = data.candidates
-      .map(c => c.source === 'ocr' ? `# OCR — verify against original: ${c.text}` : c.text)
-      .join('\n');
+    input.value = data.candidates.map(c => c.text).join('\n');
 
-    const ocrCount = data.candidates.filter(c => c.source === 'ocr').length;
-    const textCount = data.candidates.length - ocrCount;
+    const ocrCandidates = data.candidates.filter(c => c.source === 'ocr');
+    const textCount = data.candidates.length - ocrCandidates.length;
     const parts = [];
     if (textCount) parts.push(`${textCount} from the text layer`);
-    if (ocrCount) parts.push(`${ocrCount} from OCR — verify against the original`);
+    if (ocrCandidates.length) parts.push(`${ocrCandidates.length} from OCR — verify against the original`);
     const plural = data.candidates.length === 1 ? '' : 's';
     showUploadStatus(
       `Found ${data.candidates.length} candidate line${plural} in "${file.name}" ` +
       `(${parts.join(', ')}) — review before parsing.`
     );
+    renderOcrReviewPanel(ocrCandidates);
   } catch (e) {
     showUploadStatus(`Request failed: ${e}`, true);
   }

@@ -220,17 +220,25 @@ text-layer PDF never would).
 Candidates are loaded into the batch textarea for review — **unlike**
 the `.txt` upload flow, this does **not** auto-run parse, since text
 pulled from a real-world PDF layout (doubly so for OCR) is a guess, not a
-trusted input. Every OCR-sourced candidate is prefixed with
-`# OCR — verify against original:` right in the textarea — not valid
-ISCN syntax, so an unedited OCR line always comes back visibly marked
-"Needs review" if parsed as-is, rather than looking indistinguishable
-from a clean text-layer candidate. A report with zero candidates says so
-plainly rather than leaving a blank textarea that reads as "nothing to
-report." Extracting anything beyond the karyotype string itself (patient
-name, specimen ID, etc.) is out of scope, as is "correcting" likely OCR
-misreads against ISCN grammar — a misread character surfaces through the
-existing error/warning UI as-is, never silently patched; see tasks 8 and
-11 in `TASKS.md`.
+trusted input. The textarea itself always holds the plain, unmodified
+extracted text — exactly what a user would type or paste themselves —
+never decorated with markers of our own. OCR-sourced candidates need
+*more* scrutiny before parsing, not the same amount, given OCR's
+materially higher error rate on dense, punctuation-heavy ISCN strings;
+that caution is surfaced in a separate panel below the upload status
+(listing each OCR-derived line, with a "verify against the original"
+note), not by mutating what's in the textarea. An earlier version
+prefixed OCR-sourced lines with `# OCR — verify against original:`
+directly in the textarea so an unedited line would fail to parse — but
+that meant the caution couldn't be separated from the content itself: a
+user who'd already reviewed and confirmed a line was correct still had
+to manually strip the prefix before it would parse at all. A report with
+zero candidates says so plainly rather than leaving a blank textarea
+that reads as "nothing to report." Extracting anything beyond the
+karyotype string itself (patient name, specimen ID, etc.) is out of
+scope, as is "correcting" likely OCR misreads against ISCN grammar — a
+misread character surfaces through the existing error/warning UI as-is,
+never silently patched; see tasks 8 and 11 in `TASKS.md`.
 
 `find_candidate_iscn_lines()` also handles a real-world wrinkle,
 confirmed against an actual lab report PDF: some report-generation

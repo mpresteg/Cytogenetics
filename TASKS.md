@@ -352,6 +352,20 @@ unedited OCR line. Later re-verified after tasks 16/17 landed, using an
 actual 300 DPI rasterization of a real report run through real Tesseract
 OCR (not synthetic) — see task 17, which that testing directly prompted.
 
+**Revisited** (user review, after testing this live against a real
+scanned report): the `# OCR — verify against original:` prefix turned
+out to actively prevent parsing rather than just flag for review — a
+user who reviewed an OCR line, confirmed it correct, and clicked Parse
+without editing still hit a guaranteed error, because the prefix itself
+isn't valid ISCN syntax. That's a stricter cost than "needs more
+scrutiny" was meant to impose. Fixed in `app.js`: the textarea now always
+holds the plain, unmodified extracted text (what a user would type or
+paste themselves); OCR provenance is instead surfaced in a separate
+`#ocr-review-panel`, listing each OCR-sourced line with a "verify against
+the original" caution, visible but outside the parseable input. Same
+underlying goal (OCR needs more scrutiny, visibly), different mechanism
+(a warning alongside the input, not a mutation of it).
+
 ### 17. Stop OCR continuation folding from swallowing unrelated report sections
 
 **Context**: Follow-up from testing PR #8 (task 11, OCR fallback) with an
