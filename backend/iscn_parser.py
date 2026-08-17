@@ -854,16 +854,24 @@ def assess_case(clones: List[CloneResult]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Candidate-line detection (task 8: PDF report upload)
+# Candidate-line detection (task 8: PDF report upload; task 11: OCR fallback)
 #
 # Finds substrings shaped like an ISCN karyotype string inside a larger
-# block of free text (e.g. text extracted from a lab report PDF). This is
-# deliberately loose — a real modal-number-then-sex-chromosome prefix is
-# the strongest, simplest signal available, and full validation is already
-# parse_iscn()'s job, not this function's. Candidates are surfaced for
-# human review before ever being parsed; this never auto-corrects or
-# trims what it finds (e.g. trailing prose caught on the same line), by
-# design — see task 8's "Out of scope" in TASKS.md.
+# block of free text (e.g. text extracted from a lab report PDF, or OCR'd
+# from a scanned one). This is deliberately loose — a real modal-number-
+# then-sex-chromosome prefix is the strongest, simplest signal available,
+# and full validation is already parse_iscn()'s job, not this function's.
+# Candidates are surfaced for human review before ever being parsed; this
+# never auto-corrects or trims what it finds (e.g. trailing prose caught
+# on the same line), by design — see task 8's "Out of scope" in TASKS.md.
+#
+# Tolerates one thing beyond plain text-layer extraction: optional
+# whitespace after the modal-number comma (e.g. "46, XY," not just
+# "46,XY,"). That's not an auto-correction of the captured text — the
+# candidate is still returned exactly as found — it's just widening what
+# the detector will notice, because real Tesseract OCR output routinely
+# inserts a stray space after a comma (confirmed empirically while
+# building task 11) even when the source text-layer PDF never would.
 #
 # A real lab report PDF (Warde Medical Laboratory's report layout,
 # confirmed against an actual example) hard-wraps a long ISCN string
@@ -901,7 +909,7 @@ def assess_case(clones: List[CloneResult]) -> Dict[str, Any]:
 # says, so a corrupted bracket can no longer drag unrelated sections in.
 # ---------------------------------------------------------------------------
 
-CANDIDATE_LINE_RE = re.compile(r'\b\d{2,3}(?:~\d{2,3})?,[XY]{1,5}\b.*')
+CANDIDATE_LINE_RE = re.compile(r'\b\d{2,3}(?:~\d{2,3})?,\s?[XY]{1,5}\b.*')
 
 MAX_CANDIDATE_CONTINUATION_LINES = 15
 

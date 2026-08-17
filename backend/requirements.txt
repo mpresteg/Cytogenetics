@@ -3,3 +3,13 @@ uvicorn[standard]==0.30.6
 pydantic==2.9.2
 python-multipart==0.0.32
 pypdf==6.16.1
+
+# task 11: OCR fallback for scanned-image PDFs. These two are pip-
+# installable, but pytesseract is just a thin wrapper — it shells out to
+# a local Tesseract OCR binary, which is NOT pip-installable and must be
+# installed separately at the OS level before OCR will work:
+#   macOS:          brew install tesseract
+#   Debian/Ubuntu:  apt-get install tesseract-ocr
+# See README's "Running it" section.
+Pillow==12.3.0
+pytesseract==0.3.13

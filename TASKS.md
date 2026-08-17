@@ -164,42 +164,6 @@ two.
 
 ---
 
-### 11. OCR fallback for scanned-image PDF reports
-
-**Context**: Depends on task 8 existing first. Task 8 extracts embedded
-text from PDFs that have a text layer; scanned paper reports don't — the
-PDF is just page images, so that extraction returns nothing. This is a
-realistic, not hypothetical, case for lab reports, so it needs its own
-path rather than staying permanently out of scope. It's a different
-extraction mechanism and a different (likely heavier) dependency than
-task 8's — e.g. `pytesseract` wrapping a local Tesseract install — and
-whichever is picked, plus how it's installed/documented as a system
-dependency (Tesseract isn't pure-Python), should be noted in the commit
-message the way task 8 already does for its PDF library choice.
-
-**Done when**: when a PDF page yields no (or near-zero) embedded text via
-task 8's extraction, it's treated as image-only and routed through OCR
-instead; the OCR'd text is scanned using the same modal-number-shaped-line
-heuristic task 8 already uses. Every candidate string sourced from OCR is
-visibly labeled as such (e.g. "from OCR — verify against the original")
-wherever task 8 surfaces candidates for review, kept distinct from
-text-layer-derived candidates — OCR's error rate on dense,
-punctuation-heavy ISCN strings (commas/semicolons/parens, `1`/`l`/`I`,
-`0`/`O`) is materially higher than direct text extraction, and a misread
-character can silently shift a breakpoint, so this needs *more* scrutiny
-before parsing, not the same amount. Covered by rasterizing one of task
-8's existing sample PDFs into an image-only PDF and confirming the OCR
-path recovers the same karyotype string, plus a no-candidate-found case
-behaving the same as task 8's.
-
-**Out of scope**: automatically "correcting" likely OCR misreads against
-ISCN grammar (fuzzy-matching to a plausible band/chromosome) — too easy to
-silently invent a wrong breakpoint instead of a missing one; non-English
-reports or non-Latin scripts; unusual multi-column or heavily stylized
-report layouts beyond a typical single-column lab report; any cloud OCR
-API — keep it local, matching the rest of this prototype's no-external-
-service posture.
-
 ---
 
 ### 12. Incorporate clinical review feedback on the hematologic-malignancy flag (task 9)
@@ -309,6 +273,84 @@ data that was given," not new validation.
 *(none)*
 
 ## Done
+
+### 11. OCR fallback for scanned-image PDF reports
+
+**Context**: Depends on task 8 existing first. Task 8 extracts embedded
+text from PDFs that have a text layer; scanned paper reports don't — the
+PDF is just page images, so that extraction returns nothing. This is a
+realistic, not hypothetical, case for lab reports, so it needs its own
+path rather than staying permanently out of scope. It's a different
+extraction mechanism and a different (likely heavier) dependency than
+task 8's — e.g. `pytesseract` wrapping a local Tesseract install — and
+whichever is picked, plus how it's installed/documented as a system
+dependency (Tesseract isn't pure-Python), should be noted in the commit
+message the way task 8 already does for its PDF library choice.
+
+**Done when**: when a PDF page yields no (or near-zero) embedded text via
+task 8's extraction, it's treated as image-only and routed through OCR
+instead; the OCR'd text is scanned using the same modal-number-shaped-line
+heuristic task 8 already uses. Every candidate string sourced from OCR is
+visibly labeled as such (e.g. "from OCR — verify against the original")
+wherever task 8 surfaces candidates for review, kept distinct from
+text-layer-derived candidates — OCR's error rate on dense,
+punctuation-heavy ISCN strings (commas/semicolons/parens, `1`/`l`/`I`,
+`0`/`O`) is materially higher than direct text extraction, and a misread
+character can silently shift a breakpoint, so this needs *more* scrutiny
+before parsing, not the same amount. Covered by rasterizing one of task
+8's existing sample PDFs into an image-only PDF and confirming the OCR
+path recovers the same karyotype string, plus a no-candidate-found case
+behaving the same as task 8's.
+
+**Out of scope**: automatically "correcting" likely OCR misreads against
+ISCN grammar (fuzzy-matching to a plausible band/chromosome) — too easy to
+silently invent a wrong breakpoint instead of a missing one; non-English
+reports or non-Latin scripts; unusual multi-column or heavily stylized
+report layouts beyond a typical single-column lab report; any cloud OCR
+API — keep it local, matching the rest of this prototype's no-external-
+service posture.
+
+Done: chose `pytesseract` (thin wrapper around a local Tesseract binary)
+as anticipated — Tesseract itself is an OS-level install
+(`brew install tesseract` / `apt-get install tesseract-ocr`), documented
+in `requirements.txt`, the README's "Running it", and the endpoint's own
+error message when it's missing. Page images come from `pypdf`'s
+`page.images` (no separate rasterization library like `pdf2image`/poppler
+needed — a scanned PDF's page content *is* typically one embedded raster
+image, and `pypdf` already exposes it) — a nice side-effect of not having
+switched PDF libraries for this task. Routing is per-page in `main.py`
+(`_extract_page_candidates()`): under `MIN_TEXT_LAYER_CHARS` (10) of
+extracted text, a page is treated as image-only and OCR'd instead.
+
+Along the way, found (by actually running real OCR against a rendered
+image, not assuming) that Tesseract routinely inserts a stray space after
+a comma that a text-layer PDF never would — loosened the shared
+`CANDIDATE_LINE_RE` in `iscn_parser.py` to tolerate it, benefiting both
+extraction paths, not just OCR's.
+
+OCR-sourced candidates are prefixed with `# OCR — verify against
+original:` right in the textarea (not just a separate status message) —
+not valid ISCN syntax, so an unedited OCR line always comes back marked
+"Needs review" if parsed as-is. Verified live that this doesn't
+necessarily blank out every downstream finding (comma-split tokens after
+the mangled prefix can still parse independently) — that's fine; the
+requirement was visible labeling before review, not a guarantee that
+parsing fails outright.
+
+Tests: `test_ocr_extraction.py` (3 tests, needs a real local Tesseract
+install — no mocked fallback, since without it there's nothing to test)
+builds an image-only PDF entirely in-code (PIL-rendered bitmap embedded
+as a JPEG XObject, no text operators) and covers OCR recovering a
+karyotype string, a scanned report with none, and confirming a normal
+text-layer PDF still takes the text path rather than OCR. Plus 2 new
+tests in `TestCandidateLineDetection` for the comma-space tolerance.
+Verified end-to-end live in the browser: a real scanned-style PDF
+(canvas-rendered, JPEG-embedded) uploaded through the actual UI,
+confirming the OCR-labeled candidate, the status message's source
+breakdown, the zero-candidate case, and the "Needs review" behavior on an
+unedited OCR line. Later re-verified after tasks 16/17 landed, using an
+actual 300 DPI rasterization of a real report run through real Tesseract
+OCR (not synthetic) — see task 17, which that testing directly prompted.
 
 ### 17. Stop OCR continuation folding from swallowing unrelated report sections
 

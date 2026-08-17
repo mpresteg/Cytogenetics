@@ -1,5 +1,6 @@
 import io
 
+import pytesseract
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,10 +30,48 @@ def parse(req: ParseRequest):
     return parse_iscn(req.iscn, edition=req.edition)
 
 
-# task 8: PDF lab report upload. Extracts embedded text (not OCR — see
-# task 11 in TASKS.md for scanned-image PDFs) and scans it for lines
-# shaped like an ISCN karyotype string. Candidates are returned as-is for
-# the frontend to surface for review, never auto-parsed here.
+# task 11: below this many non-whitespace characters, a page's embedded
+# text layer is treated as effectively absent (scanned paper, not a real
+# text layer) and routed through OCR instead. "Near-zero," not "exactly
+# zero," since some scanned PDFs leak a stray character or two of
+# metadata/whitespace into extract_text() without having a real layer.
+MIN_TEXT_LAYER_CHARS = 10
+
+
+def _extract_page_candidates(page):
+    """Returns (candidates, source) for one PDF page. Prefers the
+    embedded text layer (fast, exact); falls back to OCR — task 11 —
+    only when that layer is effectively empty, i.e. this looks like a
+    scanned image rather than a real text-layer PDF."""
+    text = page.extract_text() or ""
+    if len(text.strip()) >= MIN_TEXT_LAYER_CHARS:
+        return find_candidate_iscn_lines(text), "text"
+
+    ocr_parts = []
+    for img in page.images:
+        try:
+            ocr_parts.append(pytesseract.image_to_string(img.image))
+        except pytesseract.TesseractNotFoundError:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "This looks like a scanned PDF, which needs OCR — but the "
+                    "Tesseract binary isn't installed on this server. See "
+                    "README's \"Running it\" section (e.g. `brew install "
+                    "tesseract` on macOS)."
+                ),
+            )
+    return find_candidate_iscn_lines("\n".join(ocr_parts)), "ocr"
+
+
+# task 8: PDF lab report upload. Extracts embedded text where a page has
+# a real text layer; falls back to OCR (task 11) for pages that don't,
+# e.g. scanned paper reports. Scans whatever text results for lines
+# shaped like an ISCN karyotype string. Candidates are returned as-is —
+# each tagged with where it came from — for the frontend to surface for
+# review; never auto-parsed here, and OCR-sourced candidates need *more*
+# scrutiny before parsing, not the same amount, given OCR's materially
+# higher error rate on dense, punctuation-heavy ISCN strings.
 @app.post("/api/extract-pdf")
 async def extract_pdf(file: UploadFile = File(...)):
     if not (file.filename or "").lower().endswith(".pdf"):
@@ -41,11 +80,14 @@ async def extract_pdf(file: UploadFile = File(...)):
     contents = await file.read()
     try:
         reader = PdfReader(io.BytesIO(contents))
-        text = "\n".join(page.extract_text() or "" for page in reader.pages)
     except PdfReadError as e:
         raise HTTPException(status_code=400, detail=f"Could not read this PDF: {e}")
 
-    candidates = find_candidate_iscn_lines(text)
+    candidates = []
+    for page in reader.pages:
+        page_candidates, source = _extract_page_candidates(page)
+        candidates.extend({"text": c, "source": source} for c in page_candidates)
+
     return {
         "filename": file.filename,
         "page_count": len(reader.pages),
