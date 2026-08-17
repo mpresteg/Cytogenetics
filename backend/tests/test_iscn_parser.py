@@ -522,6 +522,48 @@ class TestCandidateLineDetection(unittest.TestCase):
         )
         self.assertEqual(find_candidate_iscn_lines(text), [expected])
 
+    def test_real_world_ocr_text_stops_before_section_header(self):
+        # The exact text pytesseract.image_to_string() produced from a real
+        # scanned version of the same report (300 DPI rasterization of the
+        # actual PDF page). Tesseract garbled one closing paren entirely
+        # ("D11Z1x2" -> "D1121x2" with the ")" dropped, replaced by a
+        # stray "yr" on its own line), which permanently unbalances the
+        # paren count -- without the section-boundary check, continuation
+        # never resolves and runs to the line cap, swallowing "CULTURES"
+        # and the lab disclaimer footer into one giant garbled candidate.
+        # With it, folding stops cleanly right before "CULTURES" instead.
+        text = (
+            "ISCN RESULTS\n\n"
+            "46,XY[20].nuc ish\n\n"
+            "1p32 (CDKN2Cx2) ,1q21 (CKS1Bx2) ,5p15 (ATERTx2) , 9q22 (D9S1783x2) ,1l1lcen (D1121x2\n"
+            "yr\n\n"
+            "13q14.3 (DLEUx2) ,13q34 (LAMP1x2) ,14q32 (IGHx2) ,15cen(D1524x2) ,17p13.1(TP53x\n"
+            "2) ,17q11.2 (NF1x2) ,3q27 (BCL6x2),\n\n"
+            "7Toen (D7Z1x2) ,7q31 (D7S486x2) ,12cen(D12Z3x2) [200]\n\n"
+            "CULTURES\n\n"
+            "CULTURES: Direct, 24-hour unstimulated, 48-hour unstimulated, and\n"
+            "72-hour lymphoid mitogen stimulated.\n\n"
+            "LAB: L- LOW, H - HIGH, AB - ABNORMAL, C - CRITICAL, . - NOT TESTED\n"
+        )
+        candidates = find_candidate_iscn_lines(text)
+        self.assertEqual(len(candidates), 1)
+        candidate = candidates[0]
+        # The real FISH panel content made it in, garbled but complete.
+        self.assertIn("[200]", candidate)
+        self.assertIn("D9S1783x2", candidate)
+        # Nothing from the next report section leaked in.
+        self.assertNotIn("CULTURES", candidate)
+        self.assertNotIn("unstimulated", candidate)
+        self.assertNotIn("LAB:", candidate)
+
+    def test_section_boundary_stops_despite_permanently_unbalanced_paren(self):
+        # Isolates the mechanism with a minimal, deterministic case (the
+        # real-OCR test above is valuable for fidelity but depends on
+        # Tesseract's exact behavior) -- an unclosed '(' that will never
+        # resolve, immediately followed by a standalone all-caps header.
+        text = "46,XY,t(1;2\nCOMMENT\nMore report text here.\n"
+        self.assertEqual(find_candidate_iscn_lines(text), ["46,XY,t(1;2"])
+
     def test_continuation_stops_at_terminal_bracket_not_next_section(self):
         # The "CULTURES" section header right after the wrapped candidate
         # above must never get folded in -- confirmed by the previous

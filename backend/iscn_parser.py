@@ -883,6 +883,22 @@ def assess_case(clones: List[CloneResult]) -> Dict[str, Any]:
 # This does not attempt perfect reconstruction in every case — it's a
 # best-effort expansion of what gets surfaced for review, capped so it
 # can never run away across an entire document.
+#
+# That cap turned out not to be enough on its own for OCR-sourced text
+# (task 11): confirmed against real OCR output from an actual scanned
+# report, a single misread character — Tesseract dropping/garbling one
+# closing ')' — leaves the unbalanced-parens signal permanently true, so
+# continuation never resolves on its own and runs all the way to the
+# line cap, folding unrelated report sections (e.g. a "CULTURES" header
+# and the lab's disclaimer footer) into one long garbled candidate —
+# arguably worse than the original one-line truncation. The section-
+# boundary check below is a second, independent stop condition: a
+# standalone all-uppercase, digit-free line (e.g. "CULTURES", "COMMENT",
+# "SIGNATURE" — a real, recurring pattern across this report's own
+# sections) is specific enough to never collide with actual ISCN
+# content, which always mixes in numbers. It stops the fold *before*
+# consuming a line like that, regardless of what the paren-balance signal
+# says, so a corrupted bracket can no longer drag unrelated sections in.
 # ---------------------------------------------------------------------------
 
 CANDIDATE_LINE_RE = re.compile(r'\b\d{2,3}(?:~\d{2,3})?,[XY]{1,5}\b.*')
@@ -916,6 +932,20 @@ def _continuation_separator(candidate: str) -> str:
     return ""
 
 
+def _looks_like_section_boundary(line: str) -> bool:
+    """True if `line` looks like a standalone report section header
+    (e.g. "CULTURES", "COMMENT", "SIGNATURE") rather than more
+    karyotype/FISH content — never fold a line like this into a
+    candidate, no matter what the paren-balance signal says. All
+    cased characters uppercase and no digits at all is specific enough
+    to never match real ISCN content, which always mixes in numbers
+    (locus bands, copy counts, cell counts)."""
+    stripped = line.strip()
+    if not stripped or any(ch.isdigit() for ch in stripped):
+        return False
+    return stripped.isupper()
+
+
 def find_candidate_iscn_lines(text: str) -> List[str]:
     """Scan `text` line by line for substrings that look like they start an
     ISCN karyotype string (a modal number followed by a sex-chromosome
@@ -938,6 +968,7 @@ def find_candidate_iscn_lines(text: str) -> List[str]:
         continuations = 0
         while (_candidate_needs_continuation(candidate)
                and i < len(lines)
+               and not _looks_like_section_boundary(lines[i])
                and continuations < MAX_CANDIDATE_CONTINUATION_LINES):
             candidate = candidate.rstrip() + _continuation_separator(candidate) + lines[i].strip()
             i += 1
