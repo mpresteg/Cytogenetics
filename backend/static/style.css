@@ -204,6 +204,30 @@ button.secondary:hover { background: var(--accent-tint); }
 }
 .upload-status.error { color: var(--unrecognized); }
 
+.ocr-review-panel {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+.ocr-review-panel p {
+  margin: 0 0 6px;
+  color: var(--warn);
+  font-weight: 600;
+}
+.ocr-review-panel ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.ocr-review-panel li {
+  margin: 2px 0;
+  font-family: var(--font-mono, monospace);
+  word-break: break-word;
+}
+
 select {
   padding: 9px 10px;
   border-radius: 7px;
