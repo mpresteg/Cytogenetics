@@ -496,6 +496,19 @@ class TestCandidateLineDetection(unittest.TestCase):
     def test_empty_text_returns_empty_list(self):
         self.assertEqual(find_candidate_iscn_lines(""), [])
 
+    def test_tolerates_single_space_after_comma(self):
+        # Real Tesseract OCR output (task 11) routinely inserts a stray
+        # space after a comma even when the source never would — the
+        # detector should still notice this candidate, unmodified.
+        text = "46, XY, t(9;22) (q34;q11.2)"
+        self.assertEqual(find_candidate_iscn_lines(text), [text])
+
+    def test_does_not_false_positive_with_space_before_unrelated_text(self):
+        # The comma-space tolerance is scoped to right before an XY-shaped
+        # token specifically, not a general license to match anything.
+        text = "In total, 47 patients were included in this study."
+        self.assertEqual(find_candidate_iscn_lines(text), [])
+
     def test_real_world_pdf_text_layer_hard_wrap(self):
         # The exact text pypdf's extract_text() produces from a real lab
         # report PDF (Warde Medical Laboratory) whose report-generation

@@ -59,6 +59,20 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
+**OCR support (scanned PDF reports) needs one extra, non-pip step:** the
+Tesseract OCR binary, installed at the OS level, not via `pip`:
+
+```bash
+brew install tesseract          # macOS
+apt-get install tesseract-ocr   # Debian/Ubuntu
+```
+
+Everything else works fine without it — this is only needed for uploading
+*scanned* (image-only) PDF reports; text-layer PDFs, typed/pasted strings,
+and `.txt` upload are unaffected. Without Tesseract installed, uploading a
+scanned PDF returns a clear error telling you what's missing, rather than
+crashing.
+
 Then open **http://127.0.0.1:8000** in a browser. Try the example dropdown,
 or paste a string like:
 
@@ -184,23 +198,39 @@ out of scope; see task 7 in `TASKS.md`.
 
 **PDF lab report upload:** an "Upload PDF report…" button sends the file
 to a new `POST /api/extract-pdf` endpoint — this one **can't** be
-client-side the way `.txt` upload is, since PDF text extraction needs a
-Python library (`pypdf`, chosen for having zero transitive dependencies
+client-side the way `.txt` upload is, since PDF/OCR extraction needs
+Python libraries (`pypdf`, chosen for having zero transitive dependencies
 of its own, in keeping with this project's minimal-dependency stance;
-`python-multipart` is also now required, since FastAPI's file-upload
-support depends on it). The endpoint extracts each page's embedded text
-(no OCR — text-layer PDFs only, see task 11 in `TASKS.md` for scanned
-reports) and scans it with `find_candidate_iscn_lines()` for substrings
-shaped like a karyotype string (a modal number immediately followed by a
-sex-chromosome constitution, e.g. `46,XY,`). Candidates are loaded into
-the batch textarea for review — **unlike** the `.txt` upload flow, this
-does **not** auto-run parse, since text pulled from a real-world PDF
-layout is a guess, not a trusted input, and the user should see exactly
-what was found before anything gets interpreted. A report with zero
-candidates says so plainly rather than leaving a blank textarea that
-reads as "nothing to report." Extracting anything beyond the karyotype
-string itself (patient name, specimen ID, etc.) is out of scope; see
-task 8 in `TASKS.md`.
+`python-multipart` is also required, since FastAPI's file-upload support
+depends on it). For each page, the endpoint (`_extract_page_candidates()`
+in `main.py`) prefers the embedded text layer; if that's near-empty
+(under `MIN_TEXT_LAYER_CHARS` — this looks like a scanned image, not a
+real text-layer PDF), it falls back to **OCR**: extracting the page's
+embedded image via `pypdf`'s `page.images` and running it through a local
+Tesseract install via `pytesseract`. Tesseract is a real OS-level binary,
+not `pip`-installable — see "Running it" above for the install step; a
+scanned PDF uploaded without Tesseract installed returns a clear error
+rather than a crash. Whatever text results (from either path) is scanned
+with `find_candidate_iscn_lines()` for substrings shaped like a karyotype
+string (a modal number immediately followed by a sex-chromosome
+constitution, e.g. `46,XY,` — tolerant of a stray space after the comma,
+since real Tesseract output routinely inserts one even where a
+text-layer PDF never would).
+
+Candidates are loaded into the batch textarea for review — **unlike**
+the `.txt` upload flow, this does **not** auto-run parse, since text
+pulled from a real-world PDF layout (doubly so for OCR) is a guess, not a
+trusted input. Every OCR-sourced candidate is prefixed with
+`# OCR — verify against original:` right in the textarea — not valid
+ISCN syntax, so an unedited OCR line always comes back visibly marked
+"Needs review" if parsed as-is, rather than looking indistinguishable
+from a clean text-layer candidate. A report with zero candidates says so
+plainly rather than leaving a blank textarea that reads as "nothing to
+report." Extracting anything beyond the karyotype string itself (patient
+name, specimen ID, etc.) is out of scope, as is "correcting" likely OCR
+misreads against ISCN grammar — a misread character surfaces through the
+existing error/warning UI as-is, never silently patched; see tasks 8 and
+11 in `TASKS.md`.
 
 `find_candidate_iscn_lines()` also handles a real-world wrinkle,
 confirmed against an actual lab report PDF: some report-generation
@@ -251,10 +281,10 @@ confidence is worse than an honest "I don't understand this token."
 
 ## Testing
 
-Two modules under `backend/tests/`, both stdlib `unittest`, both
+Three modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 76 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 78 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)
@@ -265,19 +295,30 @@ pytest-discoverable if that's your preferred runner:
   clinical assessment (each malignancy-associated pattern, the
   complex-karyotype threshold, mosaic clone attribution, and the no-flag
   paths), terminal-band plausibility for every chromosome in
-  `APPROX_TERMINAL_BANDS`, and the PDF candidate-line detection heuristic
-  (`find_candidate_iscn_lines()`).
+  `APPROX_TERMINAL_BANDS`, and the PDF/OCR candidate-line detection
+  heuristic (`find_candidate_iscn_lines()`, including its tolerance for a
+  stray space after the comma and its multi-line continuation logic).
 - `test_pdf_extraction.py` — 3 tests, depends on `pypdf` (a real
   application dependency as of task 8, not a test-only addition).
   Builds small PDFs entirely in-code (raw PDF syntax, no external
   PDF-authoring library or binary fixture files) and runs them through
   the same extract-then-detect pipeline `/api/extract-pdf` uses: one
   clean single-karyotype report, one with two karyotype lines, one with
-  none. Deliberately doesn't go through FastAPI's `TestClient` (which
-  needs `httpx`, not otherwise a dependency here) — the actual HTTP
-  route is verified by hand in the browser instead, consistent with how
-  this repo has always treated the FastAPI layer (see "A note on
-  testing" above).
+  none.
+- `test_ocr_extraction.py` — 3 tests, depends on `pytesseract`/`Pillow`
+  *and* a real local Tesseract install (task 11) — there's no mocked
+  fallback for "Tesseract isn't installed" here, since without it there's
+  nothing to test. Builds a small image-only PDF (a PIL-rendered bitmap
+  embedded as a JPEG XObject, no text operators at all) and confirms the
+  OCR path recovers the karyotype string from it, a scanned report with
+  no karyotype content returns no candidates, and — the routing decision
+  itself — a normal text-layer PDF takes the text path, not OCR, even
+  though both code paths exist side by side.
+
+Both PDF-related modules deliberately skip FastAPI's `TestClient` (which
+needs `httpx`, not otherwise a dependency here) — the actual HTTP route
+is verified by hand in the browser instead, consistent with how this repo
+has always treated the FastAPI layer (see "A note on testing" above).
 
 ```bash
 cd backend
@@ -286,7 +327,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-79 tests total, all passing as of this build — I ran them in the sandbox
+84 tests total, all passing as of this build — I ran them in the sandbox
 this was built in, they're not just claimed to pass.
 
 ## Working on this repo

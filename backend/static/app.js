@@ -90,13 +90,26 @@ function showUploadStatus(message, isError = false) {
   uploadStatus.hidden = false;
 }
 
-// PDF report upload (task 8): sends the file to the backend (PDF text
-// extraction needs a Python library, so this can't be client-side the
-// way the .txt upload above is), gets back candidate karyotype-shaped
-// lines, and loads them into the textarea for review. Deliberately does
-// NOT auto-run parse the way the .txt upload does — text pulled from a
-// real-world PDF layout is a guess, not a trusted input, so the user
-// should see exactly what was found before anything gets interpreted.
+// PDF report upload (task 8; OCR fallback for scanned PDFs is task 11):
+// sends the file to the backend (PDF text/OCR extraction needs Python
+// libraries, so this can't be client-side the way the .txt upload above
+// is), gets back candidate karyotype-shaped lines — each tagged with
+// whether it came from the PDF's text layer or from OCR — and loads them
+// into the textarea for review. Deliberately does NOT auto-run parse the
+// way the .txt upload does — text pulled from a real-world PDF layout is
+// a guess, not a trusted input, so the user should see exactly what was
+// found before anything gets interpreted. OCR-sourced lines get an extra
+// prefix marker: OCR's error rate on dense, punctuation-heavy ISCN
+// strings is materially higher than direct text extraction, so those
+// need *more* scrutiny before parsing, not the same amount — the prefix
+// isn't a valid modal-number token, so an unedited OCR line always comes
+// back marked "Needs review" with a visible error on that first token if
+// the user clicks Parse without editing it first, rather than silently
+// looking indistinguishable from a clean parse. (It doesn't necessarily
+// blank out every downstream finding — comma-split tokens after the
+// mangled prefix can still parse correctly on their own, which is fine:
+// the point is that nothing here is presented as trustworthy without a
+// visible flag, not that parsing must fail outright.)
 uploadPdfBtn.addEventListener('click', () => pdfFileInput.click());
 
 pdfFileInput.addEventListener('change', async () => {
@@ -120,10 +133,20 @@ pdfFileInput.addEventListener('change', async () => {
       showUploadStatus(`No karyotype-shaped lines found in "${file.name}" (${data.page_count} page(s)).`, true);
       return;
     }
-    input.value = data.candidates.join('\n');
+
+    input.value = data.candidates
+      .map(c => c.source === 'ocr' ? `# OCR — verify against original: ${c.text}` : c.text)
+      .join('\n');
+
+    const ocrCount = data.candidates.filter(c => c.source === 'ocr').length;
+    const textCount = data.candidates.length - ocrCount;
+    const parts = [];
+    if (textCount) parts.push(`${textCount} from the text layer`);
+    if (ocrCount) parts.push(`${ocrCount} from OCR — verify against the original`);
     const plural = data.candidates.length === 1 ? '' : 's';
     showUploadStatus(
-      `Found ${data.candidates.length} candidate line${plural} in "${file.name}" — review before parsing.`
+      `Found ${data.candidates.length} candidate line${plural} in "${file.name}" ` +
+      `(${parts.join(', ')}) — review before parsing.`
     );
   } catch (e) {
     showUploadStatus(`Request failed: ${e}`, true);
