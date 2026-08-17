@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ISCN Validator &amp; Interpreter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 18 44" width="20" height="48">
+          <rect x="0" y="0" width="18" height="44" rx="5" class="mark-body"/>
+          <rect x="0" y="4"  width="18" height="2.2" class="mark-band b1"/>
+          <rect x="0" y="9"  width="18" height="4"   class="mark-band b2"/>
+          <rect x="0" y="16" width="18" height="1.6" class="mark-band b3"/>
+          <rect x="0" y="20" width="18" height="5.5" class="mark-band b4"/>
+          <rect x="0" y="28" width="18" height="2"   class="mark-band b1"/>
+          <rect x="0" y="33" width="18" height="3.2" class="mark-band b2"/>
+          <rect x="0" y="38" width="18" height="1.6" class="mark-band b3"/>
+        </svg>
+      </div>
+      <div>
+        <p class="eyebrow">Cytogenetics · ISCN readout</p>
+        <h1>ISCN Validator &amp; Interpreter</h1>
+      </div>
+    </div>
+    <p class="subtitle">A prototype for parsing and interpreting karyotype and FISH (ish / nuc ish) nomenclature strings.</p>
+    <svg class="band-rule" viewBox="0 0 400 8" preserveAspectRatio="none" aria-hidden="true">
+      <rect x="0"   y="0" width="26"  height="8" class="rb-dark"/>
+      <rect x="34"  y="0" width="10"  height="8" class="rb-accent"/>
+      <rect x="52"  y="0" width="46"  height="8" class="rb-light"/>
+      <rect x="104" y="0" width="14"  height="8" class="rb-mid"/>
+      <rect x="126" y="0" width="60"  height="8" class="rb-dark"/>
+      <rect x="192" y="0" width="18"  height="8" class="rb-light"/>
+      <rect x="216" y="0" width="8"   height="8" class="rb-accent"/>
+      <rect x="230" y="0" width="34"  height="8" class="rb-mid"/>
+      <rect x="270" y="0" width="50"  height="8" class="rb-light"/>
+      <rect x="326" y="0" width="12"  height="8" class="rb-dark"/>
+      <rect x="344" y="0" width="8"   height="8" class="rb-fish"/>
+      <rect x="358" y="0" width="42"  height="8" class="rb-mid"/>
+    </svg>
+  </header>
+
+  <main>
+    <section class="input-section">
+      <label for="iscn-input">ISCN string</label>
+      <textarea id="iscn-input" rows="3" placeholder="e.g. 46,XX,t(9;22)(q34;q11.2)"></textarea>
+      <div class="controls">
+        <button id="parse-btn">Parse</button>
+        <select id="example-select">
+          <option value="">Load an example…</option>
+        </select>
+        <span class="spacer"></span>
+        <label class="edition-label" for="edition-select">ISCN edition</label>
+        <select id="edition-select"></select>
+      </div>
+    </section>
+
+    <section id="results"></section>
+
+    <section class="coverage">
+      <p class="eyebrow">Coverage</p>
+      <h2>What this prototype currently understands</h2>
+      <ul>
+        <li><strong>Numerical</strong><span>+N / -N (gain/loss of a chromosome), +mar / -mar</span></li>
+        <li><strong>Structural</strong><span>t() translocation, del() deletion, dup() duplication, inv() inversion, i() isochromosome, r() ring, add() addition, ins() insertion, der() (decomposed), rob(), mar, dmin, hsr()</span></li>
+        <li><strong>Mosaicism</strong><span>multiple clones separated by "/", with [N] cell counts</span></li>
+        <li><strong>FISH</strong><span>nuc ish(...) and ish(...) probe results — probe+, probe-, probeXN, fusion ("con"), amplification ("amp"), with reference notes for well-known probes</span></li>
+        <li><strong>Validation</strong><span>modal number format, sex chromosome constitution, band format, a soft cross-check between the stated modal number and the numerical abnormalities listed, and approximate band-plausibility / breakpoint-order checks</span></li>
+      </ul>
+      <p class="note">Anything not listed above (e.g. uncertainty markers like "?", some complex multi-step rearrangements) is flagged as <em>unrecognized</em> rather than guessed at. The edition selector is a scaffold — only a couple of illustrative edition-specific notes are wired up so far; see the README.</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
