@@ -132,6 +132,155 @@ plain-text version turns out to be insufficient.
 
 ---
 
+### 8. Upload a lab PDF report and detect the ISCN string
+
+**Context**: New capability — no existing code path touches PDFs.
+`backend/main.py` currently only accepts an ISCN string typed, pasted, or
+(tasks 6/7) loaded from a plain-text file, always client-side. Real lab
+cytogenetics reports are mostly prose (patient/specimen info, methodology,
+interpretation) with the karyotype buried in it as a short, distinctively-
+shaped line — almost always starting with a valid modal-number pattern
+(e.g. `46,XY,` or `47,XX,+21...`), which `iscn_parser.py` already knows how
+to recognize and is the strongest signal to search on. Extracting text from
+a PDF needs a new Python dependency (e.g. `pdfplumber` or `pypdf`) added to
+`backend/requirements.txt` — there's no precedent for this in the repo, so
+whichever is picked should be noted in the commit message along with why.
+
+**Done when**:
+- A file input accepts a PDF; its text is extracted **server-side** (new
+  endpoint, since this needs a Python PDF library — not doable client-side
+  the way tasks 6/7 were) and scanned for line(s) shaped like an ISCN
+  karyotype string.
+- Detected candidate string(s) are surfaced for review, not silently
+  auto-parsed as ground truth — e.g. pre-filled into the existing batch
+  textarea (reusing tasks 6/7's batch-parse path) so the user sees exactly
+  what was extracted before it's interpreted, since real-world PDF layouts
+  can break lines or introduce extraction artifacts.
+- A report with zero confident candidates says so plainly rather than
+  faking a result — same "honest unrecognized" principle the parser
+  already follows for tokens it can't parse.
+- A report with multiple karyotype lines (e.g. several specimens) surfaces
+  all of them through the batch path, labeled as today.
+- Covered by a few small hand-built sample PDFs: one clean single-karyotype
+  report, one with two karyotype lines, one with none.
+
+**Out of scope**: OCR / scanned-image PDFs with no text layer — real lab
+reports are frequently scanned paper, so this isn't hypothetical, but it's
+a different enough extraction path (and dependency) that it's split out as
+task 11 rather than folded in here; extracting anything beyond the
+karyotype string itself (patient name, specimen ID, ordering physician,
+etc.); auto-correcting malformed extracted text before parsing — if
+extraction produces something that doesn't parse cleanly, that surfaces
+through the existing error/warning UI as-is, not patched.
+
+---
+
+### 9. Case-level clinical assessment, with a hematologic-malignancy flag
+
+**Context**: `iscn_parser.py` currently attaches a plain-English
+`interpretation` to each individual `Finding`, and a separate reference
+note to known probes/fusions (`PROBE_KNOWLEDGE`/`FUSION_KNOWLEDGE`, task 3)
+— but nothing rolls the findings for a clone/case up into one overall
+assessment, and nothing flags whether the pattern of findings is one
+recurrently associated with a hematologic malignancy (leukemia/lymphoma).
+That needs a new small, sourced, explicitly-non-diagnostic reference table
+of recurrent malignancy-associated abnormalities — same shape and same
+discipline as `PROBE_KNOWLEDGE`/`FUSION_KNOWLEDGE` (locus/event + one-line
+association + citation), just keyed off the higher-level rearrangement
+instead of a single probe. Starting candidates: t(9;22) BCR-ABL1 (CML);
+t(15;17) PML-RARA (APL); t(8;21) RUNX1-RUNX1T1 (AML); inv(16)/t(16;16)
+CBFB-MYH11 (AML); t(12;21) ETV6-RUNX1 (pediatric B-ALL); t(11;14)
+CCND1-IGH (mantle cell lymphoma); t(14;18) IGH-BCL2 (follicular lymphoma);
+-7/del(7q), del(5q), complex karyotype (MDS/AML association).
+
+**Done when**: parsing a karyotype produces, alongside the existing
+per-finding interpretations, one case-level assessment: a plain-English
+summary, and — only if a finding matches the new reference table — an
+explicit, clearly-labeled flag naming which finding(s) triggered it, with
+the same "reference note, not diagnostic" disclaimer used elsewhere,
+never phrased as an actual diagnosis. Rendered in the UI as its own
+visually distinct section (`app.js`), not buried inside a per-finding
+line. Tests: a set of known malignancy-associated karyotypes each raise
+the flag naming the right finding; a normal karyotype and an abnormality
+absent from the table both correctly raise no flag.
+
+**Out of scope**: differential diagnosis, staging, or prognosis of any
+kind; disambiguating constitutional vs. acquired abnormalities (e.g. +21
+on a blood specimen could be constitutional Down syndrome *or* acquired in
+AML — noting that ambiguity explicitly is fine, resolving it is not; this
+tool has no clinical context to resolve it with); generating the
+assessment via free-text summarization of the raw string — it's templated
+from the same structured `Finding` data the parser already produces, not
+LLM- or NLP-generated prose.
+
+---
+
+### 10. Compare tool assessment against an uploaded lab report's interpretation
+
+**Context**: Depends on task 8 (PDF upload + ISCN-string detection) and
+task 9 (case-level assessment) both existing first. Task 8's scope
+explicitly excludes extracting anything beyond the karyotype string
+itself, so a lab report's own written interpretation/comment section isn't
+captured yet. This task adds extracting *that* section (when present) and
+displaying it next to this tool's own generated assessment from task 9,
+so a user can compare them — not attempting to automatically judge
+agreement or disagreement between two pieces of free text.
+
+**Done when**: when a PDF uploaded via task 8's flow contains a section
+introduced by one of a small, documented set of header strings (e.g.
+"Interpretation:", "Comment:", "Clinical Correlation:"), that section's
+text is extracted and shown side-by-side with this tool's task-9
+assessment, each clearly and separately labeled ("Lab-reported
+interpretation" vs. "This tool's interpretation") so the two are never
+visually conflated or merged into one voice. If no such section is found,
+that's stated plainly rather than leaving a blank space that reads as
+"nothing to report." Covered by extending task 8's sample PDFs with one
+that includes a labeled interpretation section and one that doesn't.
+
+**Out of scope**: any automated concordance/discordance scoring or NLP
+comparison between the two texts — the human reads both, the tool doesn't
+judge them; editing, correcting, or annotating the lab's interpretation;
+any recommendation or next-step guidance based on discordance between the
+two.
+
+---
+
+### 11. OCR fallback for scanned-image PDF reports
+
+**Context**: Depends on task 8 existing first. Task 8 extracts embedded
+text from PDFs that have a text layer; scanned paper reports don't — the
+PDF is just page images, so that extraction returns nothing. This is a
+realistic, not hypothetical, case for lab reports, so it needs its own
+path rather than staying permanently out of scope. It's a different
+extraction mechanism and a different (likely heavier) dependency than
+task 8's — e.g. `pytesseract` wrapping a local Tesseract install — and
+whichever is picked, plus how it's installed/documented as a system
+dependency (Tesseract isn't pure-Python), should be noted in the commit
+message the way task 8 already does for its PDF library choice.
+
+**Done when**: when a PDF page yields no (or near-zero) embedded text via
+task 8's extraction, it's treated as image-only and routed through OCR
+instead; the OCR'd text is scanned using the same modal-number-shaped-line
+heuristic task 8 already uses. Every candidate string sourced from OCR is
+visibly labeled as such (e.g. "from OCR — verify against the original")
+wherever task 8 surfaces candidates for review, kept distinct from
+text-layer-derived candidates — OCR's error rate on dense,
+punctuation-heavy ISCN strings (commas/semicolons/parens, `1`/`l`/`I`,
+`0`/`O`) is materially higher than direct text extraction, and a misread
+character can silently shift a breakpoint, so this needs *more* scrutiny
+before parsing, not the same amount. Covered by rasterizing one of task
+8's existing sample PDFs into an image-only PDF and confirming the OCR
+path recovers the same karyotype string, plus a no-candidate-found case
+behaving the same as task 8's.
+
+**Out of scope**: automatically "correcting" likely OCR misreads against
+ISCN grammar (fuzzy-matching to a plausible band/chromosome) — too easy to
+silently invent a wrong breakpoint instead of a missing one; non-English
+reports or non-Latin scripts; unusual multi-column or heavily stylized
+report layouts beyond a typical single-column lab report; any cloud OCR
+API — keep it local, matching the rest of this prototype's no-external-
+service posture.
+
 ---
 
 ## In progress
