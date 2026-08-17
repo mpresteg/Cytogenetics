@@ -664,17 +664,160 @@ def _edition_notes_for(findings: List[Finding]) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
+# Case-level clinical assessment
+#
+# Rolls per-finding structural/numerical results up into one case-level
+# assessment: a plain-English summary, plus an explicit flag when findings
+# match a small, sourced reference table of cytogenetic abnormalities named
+# as recurrent in the WHO Classification of Haematolymphoid Tumours (5th
+# ed., 2022) as characteristic of specific leukemias/lymphomas, or when the
+# case meets the common clinical convention for a "complex karyotype"
+# (>= 3 unrelated abnormalities in one clone).
+#
+# This is a REFERENCE NOTE, not a diagnosis, staging, or prognosis — it
+# names a recurrently-associated pattern and nothing more. In particular it
+# cannot and does not distinguish a constitutional finding from an acquired
+# one (e.g. +21 here could be constitutional Down syndrome or an acquired
+# finding in a blood specimen) — that needs clinical context (specimen
+# type, patient history) this tool doesn't have.
+# ---------------------------------------------------------------------------
+
+COMPLEX_KARYOTYPE_MIN_ABNORMALITIES = 3
+
+
+def _chrom_set_matcher(chroms, count=None):
+    """Matches a structural finding with abbreviation 't' whose chromosome
+    list, as a set, equals `chroms` (order-independent — t(9;22) and
+    t(22;9) are the same event). `count`, if given, also requires
+    len(chromosomes) == count, which is what tells t(16;16) (two entries,
+    one chromosome) apart from some other lone chromosome-16 event."""
+    chrom_set = set(chroms)
+
+    def matcher(f: Finding) -> bool:
+        if f.abbreviation != "t":
+            return False
+        if set(f.chromosomes) != chrom_set:
+            return False
+        if count is not None and len(f.chromosomes) != count:
+            return False
+        return True
+    return matcher
+
+
+def _single_chrom_matcher(abbreviation, chrom, category="structural"):
+    def matcher(f: Finding) -> bool:
+        return (f.category == category and f.abbreviation == abbreviation
+                and f.chromosomes == [chrom])
+    return matcher
+
+
+def _any_of(*matchers):
+    def matcher(f: Finding) -> bool:
+        return any(m(f) for m in matchers)
+    return matcher
+
+
+# Each entry: (matcher, label, note). A finding is checked against every
+# entry (in practice these are specific enough that at most one ever
+# matches, but nothing relies on that). Starting set drawn from the
+# recurrent genetic abnormalities named in the WHO Classification of
+# Haematolymphoid Tumours (5th ed., 2022) — this table only names the
+# pairing, never a stage/prognosis/treatment implication. Not exhaustive;
+# see task 9 in TASKS.md for the list this was seeded from.
+MALIGNANCY_KNOWLEDGE = [
+    (_chrom_set_matcher({"9", "22"}, count=2),
+     "t(9;22) — BCR-ABL1",
+     "Recurrently associated with chronic myeloid leukemia (CML), and seen "
+     "in a subset of acute lymphoblastic leukemia (ALL)."),
+    (_chrom_set_matcher({"15", "17"}, count=2),
+     "t(15;17) — PML-RARA",
+     "Recurrently associated with acute promyelocytic leukemia (APL), a "
+     "subtype of AML."),
+    (_chrom_set_matcher({"8", "21"}, count=2),
+     "t(8;21) — RUNX1-RUNX1T1",
+     "Recurrently associated with acute myeloid leukemia (AML), "
+     "core-binding-factor subtype."),
+    (_any_of(_single_chrom_matcher("inv", "16"), _chrom_set_matcher({"16"}, count=2)),
+     "inv(16)/t(16;16) — CBFB-MYH11",
+     "Recurrently associated with acute myeloid leukemia (AML), "
+     "core-binding-factor subtype."),
+    (_chrom_set_matcher({"12", "21"}, count=2),
+     "t(12;21) — ETV6-RUNX1",
+     "Recurrently associated with pediatric B-lymphoblastic leukemia (B-ALL)."),
+    (_chrom_set_matcher({"11", "14"}, count=2),
+     "t(11;14) — CCND1-IGH",
+     "Recurrently associated with mantle cell lymphoma."),
+    (_chrom_set_matcher({"14", "18"}, count=2),
+     "t(14;18) — IGH-BCL2",
+     "Recurrently associated with follicular lymphoma."),
+    (_any_of(_single_chrom_matcher("-", "7", category="numerical"), _single_chrom_matcher("del", "7")),
+     "-7/del(7q)",
+     "Recurrently associated with myelodysplastic syndrome (MDS) and AML, "
+     "particularly therapy-related cases."),
+    (_single_chrom_matcher("del", "5"),
+     "del(5q)",
+     "Recurrently associated with myelodysplastic syndrome (MDS) and AML."),
+]
+
+
+def _malignancy_matches_for_finding(f: Finding):
+    return [(label, note) for matcher, label, note in MALIGNANCY_KNOWLEDGE if matcher(f)]
+
+
+def assess_case(clones: List[CloneResult]) -> Dict[str, Any]:
+    """Rolls the whole case (all clones parsed from one ISCN string) up
+    into one assessment. See the module comment above for what this is
+    (a reference-table lookup) and isn't (a diagnosis)."""
+    matches: List[Dict[str, Any]] = []
+
+    for idx, clone in enumerate(clones):
+        recognized = [f for f in clone.findings if f.category in ("structural", "numerical")]
+        for f in recognized:
+            for label, note in _malignancy_matches_for_finding(f):
+                matches.append({
+                    "clone_index": idx,
+                    "clone_raw": clone.raw,
+                    "finding_raw": f.raw,
+                    "label": label,
+                    "note": f"Reference note (not diagnostic): {note}",
+                })
+        if len(recognized) >= COMPLEX_KARYOTYPE_MIN_ABNORMALITIES:
+            matches.append({
+                "clone_index": idx,
+                "clone_raw": clone.raw,
+                "finding_raw": None,
+                "label": f"Complex karyotype ({len(recognized)} abnormalities)",
+                "note": ("Reference note (not diagnostic): three or more unrelated "
+                         "abnormalities in one clone is recurrently associated with "
+                         "higher-risk myelodysplastic syndrome (MDS) and acute "
+                         "myeloid leukemia (AML)."),
+            })
+
+    flagged = len(matches) > 0
+    if flagged:
+        summary = (f"{len(matches)} finding(s) in this case match a pattern this "
+                   f"tool's reference table recurrently associates with hematologic "
+                   f"malignancy — see below. This is a reference note, not a diagnosis.")
+    else:
+        summary = ("No findings in this case match a pattern in this tool's "
+                   "hematologic-malignancy reference table.")
+
+    return {"flagged": flagged, "summary": summary, "matches": matches}
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
 def parse_iscn(raw: str, edition: str = DEFAULT_EDITION) -> Dict[str, Any]:
     raw = raw.strip()
     if not raw:
-        return {"input": raw, "clones": [], "errors": ["Empty input."]}
+        return {"input": raw, "clones": [], "errors": ["Empty input."], "assessment": None}
     if edition not in SUPPORTED_EDITIONS:
         edition = DEFAULT_EDITION
 
     clone_strings = split_top_level(raw, sep='/')
+    clone_objs: List[CloneResult] = []
     clones = []
     for cs in clone_strings:
         cs = cs.strip()
@@ -682,6 +825,7 @@ def parse_iscn(raw: str, edition: str = DEFAULT_EDITION) -> Dict[str, Any]:
             clone = parse_fish_only_clone(cs)
         else:
             clone = parse_karyotype_clone(cs)
+        clone_objs.append(clone)
         clone_dict = clone.to_dict()
         clone_dict["edition_notes"] = _edition_notes_for(clone.findings)
         clones.append(clone_dict)
@@ -692,4 +836,5 @@ def parse_iscn(raw: str, edition: str = DEFAULT_EDITION) -> Dict[str, Any]:
         "clone_count": len(clones),
         "is_mosaic": len(clones) > 1,
         "clones": clones,
+        "assessment": assess_case(clone_objs),
     }

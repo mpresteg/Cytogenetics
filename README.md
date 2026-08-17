@@ -159,6 +159,22 @@ and runs it through the same batch-parse path — no upload to the backend,
 nothing persisted. CSV/XLSX and other formats needing column-mapping are
 out of scope; see task 7 in `TASKS.md`.
 
+**Case-level clinical assessment:** every parse also returns a top-level
+`assessment` (`assess_case()` in `iscn_parser.py`) that rolls the case's
+findings up into one plain-English summary, plus an explicit flag when a
+finding matches `MALIGNANCY_KNOWLEDGE` — a small, sourced reference table
+of cytogenetic abnormalities named as recurrent in the WHO Classification
+of Haematolymphoid Tumours (5th ed., 2022) — or when a clone has 3+
+unrelated abnormalities (the common "complex karyotype" convention).
+Rendered as its own visually distinct panel in the UI (`renderAssessment()`
+in `app.js`), amber-highlighted only when something matched. Same
+discipline as the FISH `PROBE_KNOWLEDGE`/`FUSION_KNOWLEDGE` notes: every
+match's note is explicitly prefixed "Reference note (not diagnostic)" —
+this names a recurrently-associated pattern, never a diagnosis, stage, or
+prognosis, and it cannot distinguish a constitutional finding (e.g. +21)
+from an acquired one, since that needs clinical context (specimen type,
+patient history) this tool doesn't have.
+
 Anything outside all of the above grammar is returned as
 `category: "unrecognized"` with an explicit warning — it's never silently
 mis-parsed or dropped. This matters a lot for a clinical-adjacent tool: false
@@ -166,7 +182,7 @@ confidence is worse than an honest "I don't understand this token."
 
 ## Testing
 
-`backend/tests/test_iscn_parser.py` — 31 tests, stdlib `unittest` (zero
+`backend/tests/test_iscn_parser.py` — 44 tests, stdlib `unittest` (zero
 dependencies, so it's runnable without `pip install` anything), also
 pytest-discoverable if that's your preferred runner.
 
@@ -181,9 +197,11 @@ Covers: normal karyotypes, numerical abnormalities and the modal-number
 consistency check, every structural token type, `der()` decomposition (both
 forms) and its `rob()` suggestion, mosaicism with cell counts, FISH probe
 parsing (copy number / presence-absence / fusion) and the knowledge-base
-notes, unrecognized-token handling, and the edition parameter. All 31 pass
-as of this build — I ran them in the sandbox this was built in, they're not
-just claimed to pass.
+notes, unrecognized-token handling, the edition parameter, and the
+case-level clinical assessment (each malignancy-associated pattern, the
+complex-karyotype threshold, mosaic clone attribution, and the no-flag
+paths). All 44 pass as of this build — I ran them in the sandbox this was
+built in, they're not just claimed to pass.
 
 ## Working on this repo
 
