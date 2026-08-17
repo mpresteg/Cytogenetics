@@ -218,6 +218,91 @@ class TestUnrecognized(unittest.TestCase):
         self.assertIn("Empty input.", r["errors"])
 
 
+class TestClinicalAssessment(unittest.TestCase):
+    def test_bcr_abl1_translocation_flags(self):
+        r = parse_iscn("46,XY,t(9;22)(q34;q11.2)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertEqual(len(a["matches"]), 1)
+        m = a["matches"][0]
+        self.assertIn("BCR-ABL1", m["label"])
+        self.assertIn("CML", m["note"])
+        self.assertTrue(m["note"].startswith("Reference note (not diagnostic):"))
+        self.assertEqual(m["finding_raw"], "t(9;22)(q34;q11.2)")
+        self.assertEqual(m["clone_index"], 0)
+
+    def test_pml_rara_translocation_flags(self):
+        r = parse_iscn("46,XX,t(15;17)(q24;q21)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("PML-RARA" in m["label"] for m in a["matches"]))
+        self.assertTrue(any("promyelocytic" in m["note"] for m in a["matches"]))
+
+    def test_inv16_flags_cbfb_myh11(self):
+        r = parse_iscn("46,XY,inv(16)(p13q22)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("CBFB-MYH11" in m["label"] for m in a["matches"]))
+
+    def test_t_16_16_also_flags_cbfb_myh11(self):
+        r = parse_iscn("46,XY,t(16;16)(p13;q22)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("CBFB-MYH11" in m["label"] for m in a["matches"]))
+
+    def test_monosomy_7_flags(self):
+        r = parse_iscn("45,XY,-7")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("7" in m["label"] for m in a["matches"]))
+
+    def test_del_5q_flags(self):
+        r = parse_iscn("46,XX,del(5)(q13q33)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("del(5q)" in m["label"] for m in a["matches"]))
+
+    def test_normal_karyotype_not_flagged(self):
+        r = parse_iscn("46,XY")
+        a = r["assessment"]
+        self.assertFalse(a["flagged"])
+        self.assertEqual(a["matches"], [])
+
+    def test_unrelated_abnormality_not_flagged(self):
+        r = parse_iscn("46,XY,add(4)(p16)")
+        a = r["assessment"]
+        self.assertFalse(a["flagged"])
+        self.assertEqual(a["matches"], [])
+
+    def test_complex_karyotype_flags_without_specific_match(self):
+        # Three unrelated abnormalities, none individually in the table.
+        r = parse_iscn("48,XY,+8,+21,add(4)(p16)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("Complex karyotype" in m["label"] for m in a["matches"]))
+
+    def test_two_abnormalities_not_complex(self):
+        r = parse_iscn("47,XY,+8,add(4)(p16)")
+        a = r["assessment"]
+        self.assertFalse(a["flagged"])
+
+    def test_mosaic_records_clone_index(self):
+        r = parse_iscn("47,XY,t(9;22)(q34;q11.2)[10]/46,XY[10]")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertEqual(a["matches"][0]["clone_index"], 0)
+
+    def test_fish_only_no_crash_not_flagged(self):
+        r = parse_iscn("nuc ish(D21S259x3)")
+        a = r["assessment"]
+        self.assertFalse(a["flagged"])
+        self.assertEqual(a["matches"], [])
+
+    def test_empty_input_assessment_is_none(self):
+        r = parse_iscn("")
+        self.assertIsNone(r["assessment"])
+
+
 class TestEdition(unittest.TestCase):
     def test_default_edition(self):
         r = parse_iscn("46,XY")

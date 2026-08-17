@@ -133,6 +133,42 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
+// Renders the case-level clinical assessment (task 9): a summary line
+// always, and — only when the reference-table lookup actually matched
+// something — a clearly-labeled, visually distinct list of the matches.
+// Never rendered as a diagnosis; every match's own note text already
+// carries a "Reference note (not diagnostic)" prefix from the backend.
+function renderAssessment(assessment, container) {
+  const panel = document.createElement('div');
+  panel.className = `assessment-panel${assessment.flagged ? ' flagged' : ''}`;
+
+  const summary = document.createElement('p');
+  summary.className = 'assessment-summary';
+  if (assessment.flagged) {
+    summary.innerHTML = `<span class="badge malignancy">Reference flag</span> ${escapeHtml(assessment.summary)}`;
+  } else {
+    summary.textContent = assessment.summary;
+  }
+  panel.appendChild(summary);
+
+  if (assessment.flagged) {
+    const list = document.createElement('ul');
+    list.className = 'assessment-matches';
+    assessment.matches.forEach(m => {
+      const li = document.createElement('li');
+      const findingBit = m.finding_raw ? ` <code>${escapeHtml(m.finding_raw)}</code>` : '';
+      li.innerHTML = `
+        <div class="assessment-match-label"><strong>${escapeHtml(m.label)}</strong>${findingBit}</div>
+        <div class="assessment-note">${escapeHtml(m.note)}</div>
+      `;
+      list.appendChild(li);
+    });
+    panel.appendChild(list);
+  }
+
+  container.appendChild(panel);
+}
+
 // Renders one /api/parse result (mosaic banner + clone cards) into the
 // given container. Split out from runParse so batch mode can render each
 // line's result into its own labeled block using the same markup as
@@ -145,6 +181,8 @@ function renderClones(data, container) {
     container.appendChild(errBox);
     return;
   }
+
+  if (data.assessment) renderAssessment(data.assessment, container);
 
   if (data.is_mosaic) {
     const banner = document.createElement('p');

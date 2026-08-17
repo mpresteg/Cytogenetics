@@ -241,6 +241,59 @@ select {
   color: var(--accent-deep);
 }
 
+.assessment-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 18px;
+}
+.assessment-panel.flagged {
+  background: var(--warn-bg);
+  border-color: #e6c98a;
+}
+
+.assessment-summary {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.assessment-panel.flagged .assessment-summary { color: var(--warn); }
+
+.badge.malignancy { background: #f3e2bd; color: var(--warn); margin-right: 2px; }
+
+.assessment-matches {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.assessment-matches li {
+  border-top: 1px solid #e6c98a;
+  padding-top: 10px;
+}
+.assessment-matches li:first-child { border-top: none; padding-top: 0; }
+.assessment-match-label {
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+.assessment-match-label code {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  padding: 1px 7px;
+  border-radius: 5px;
+  margin-left: 4px;
+}
+.assessment-note {
+  margin-top: 3px;
+  font-size: 0.85rem;
+  color: var(--warn);
+  line-height: 1.4;
+}
+
 .mosaic-banner {
   display: flex;
   align-items: center;

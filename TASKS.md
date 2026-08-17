@@ -175,46 +175,6 @@ through the existing error/warning UI as-is, not patched.
 
 ---
 
-### 9. Case-level clinical assessment, with a hematologic-malignancy flag
-
-**Context**: `iscn_parser.py` currently attaches a plain-English
-`interpretation` to each individual `Finding`, and a separate reference
-note to known probes/fusions (`PROBE_KNOWLEDGE`/`FUSION_KNOWLEDGE`, task 3)
-— but nothing rolls the findings for a clone/case up into one overall
-assessment, and nothing flags whether the pattern of findings is one
-recurrently associated with a hematologic malignancy (leukemia/lymphoma).
-That needs a new small, sourced, explicitly-non-diagnostic reference table
-of recurrent malignancy-associated abnormalities — same shape and same
-discipline as `PROBE_KNOWLEDGE`/`FUSION_KNOWLEDGE` (locus/event + one-line
-association + citation), just keyed off the higher-level rearrangement
-instead of a single probe. Starting candidates: t(9;22) BCR-ABL1 (CML);
-t(15;17) PML-RARA (APL); t(8;21) RUNX1-RUNX1T1 (AML); inv(16)/t(16;16)
-CBFB-MYH11 (AML); t(12;21) ETV6-RUNX1 (pediatric B-ALL); t(11;14)
-CCND1-IGH (mantle cell lymphoma); t(14;18) IGH-BCL2 (follicular lymphoma);
--7/del(7q), del(5q), complex karyotype (MDS/AML association).
-
-**Done when**: parsing a karyotype produces, alongside the existing
-per-finding interpretations, one case-level assessment: a plain-English
-summary, and — only if a finding matches the new reference table — an
-explicit, clearly-labeled flag naming which finding(s) triggered it, with
-the same "reference note, not diagnostic" disclaimer used elsewhere,
-never phrased as an actual diagnosis. Rendered in the UI as its own
-visually distinct section (`app.js`), not buried inside a per-finding
-line. Tests: a set of known malignancy-associated karyotypes each raise
-the flag naming the right finding; a normal karyotype and an abnormality
-absent from the table both correctly raise no flag.
-
-**Out of scope**: differential diagnosis, staging, or prognosis of any
-kind; disambiguating constitutional vs. acquired abnormalities (e.g. +21
-on a blood specimen could be constitutional Down syndrome *or* acquired in
-AML — noting that ambiguity explicitly is fine, resolving it is not; this
-tool has no clinical context to resolve it with); generating the
-assessment via free-text summarization of the raw string — it's templated
-from the same structured `Finding` data the parser already produces, not
-LLM- or NLP-generated prose.
-
----
-
 ### 10. Compare tool assessment against an uploaded lab report's interpretation
 
 **Context**: Depends on task 8 (PDF upload + ISCN-string detection) and
@@ -317,6 +277,57 @@ as blocked/under-review, not "resolved" preemptively.
 *(none)*
 
 ## Done
+
+### 9. Case-level clinical assessment, with a hematologic-malignancy flag
+
+**Context**: `iscn_parser.py` currently attaches a plain-English
+`interpretation` to each individual `Finding`, and a separate reference
+note to known probes/fusions (`PROBE_KNOWLEDGE`/`FUSION_KNOWLEDGE`, task 3)
+— but nothing rolls the findings for a clone/case up into one overall
+assessment, and nothing flags whether the pattern of findings is one
+recurrently associated with a hematologic malignancy (leukemia/lymphoma).
+That needs a new small, sourced, explicitly-non-diagnostic reference table
+of recurrent malignancy-associated abnormalities — same shape and same
+discipline as `PROBE_KNOWLEDGE`/`FUSION_KNOWLEDGE` (locus/event + one-line
+association + citation), just keyed off the higher-level rearrangement
+instead of a single probe. Starting candidates: t(9;22) BCR-ABL1 (CML);
+t(15;17) PML-RARA (APL); t(8;21) RUNX1-RUNX1T1 (AML); inv(16)/t(16;16)
+CBFB-MYH11 (AML); t(12;21) ETV6-RUNX1 (pediatric B-ALL); t(11;14)
+CCND1-IGH (mantle cell lymphoma); t(14;18) IGH-BCL2 (follicular lymphoma);
+-7/del(7q), del(5q), complex karyotype (MDS/AML association).
+
+**Done when**: parsing a karyotype produces, alongside the existing
+per-finding interpretations, one case-level assessment: a plain-English
+summary, and — only if a finding matches the new reference table — an
+explicit, clearly-labeled flag naming which finding(s) triggered it, with
+the same "reference note, not diagnostic" disclaimer used elsewhere,
+never phrased as an actual diagnosis. Rendered in the UI as its own
+visually distinct section (`app.js`), not buried inside a per-finding
+line. Tests: a set of known malignancy-associated karyotypes each raise
+the flag naming the right finding; a normal karyotype and an abnormality
+absent from the table both correctly raise no flag.
+
+**Out of scope**: differential diagnosis, staging, or prognosis of any
+kind; disambiguating constitutional vs. acquired abnormalities (e.g. +21
+on a blood specimen could be constitutional Down syndrome *or* acquired in
+AML — noting that ambiguity explicitly is fine, resolving it is not; this
+tool has no clinical context to resolve it with); generating the
+assessment via free-text summarization of the raw string — it's templated
+from the same structured `Finding` data the parser already produces, not
+LLM- or NLP-generated prose.
+
+Done as specced: `MALIGNANCY_KNOWLEDGE` in `iscn_parser.py` covers all 9
+starting candidates plus the complex-karyotype (≥3 abnormalities) rule;
+`assess_case()` rolls findings from every clone up into one top-level
+`assessment` (`flagged`, `summary`, `matches[]`, each match naming its
+clone index, triggering finding, label, and a "Reference note (not
+diagnostic)"-prefixed note). Rendered as its own amber-highlighted panel
+above the clone cards (`renderAssessment()` in `app.js`), neutral/quiet
+when nothing matched. 13 new tests in `TestClinicalAssessment` (44 total,
+all passing) — one per malignancy rule, the complex-karyotype threshold
+(and just-under-threshold), mosaic clone-index attribution, FISH-only and
+empty-input edge cases. Verified in-browser for both the flagged and
+unflagged rendering.
 
 ### 7. File upload of a list of cytogenetics strings
 
