@@ -132,6 +132,28 @@ plain-text version turns out to be insufficient.
 
 ---
 
+### 7. File upload of a list of cytogenetics strings
+
+**Context**: `backend/static/index.html` and `app.js`. Task 6 (batch mode)
+already parses multiple ISCN strings pasted into the textarea, one per
+line, via a client-side loop over `/api/parse`. Right now getting strings
+into that textarea means copy-pasting; a lab handling many cases at once
+is more likely to have them in a local `.txt` file already.
+
+**Done when**: a file input next to the textarea lets the user choose a
+local plain-text file (one ISCN string per line — same shape the textarea
+already expects); its contents are read client-side (`FileReader`) and fed
+into the existing batch-parse path (`runParse()` / `renderClones()` from
+task 6), so results render exactly as they do for pasted batch input,
+labeled by input order. Uploading a file with a mix of valid/garbage lines
+renders each line correctly, same as a pasted mix does today. Client-side
+only — no new backend endpoint, no file persisted to disk.
+
+**Out of scope**: CSV/XLSX or any format needing column-mapping (plain
+text, one string per line, only); multi-file upload; drag-and-drop (fine
+as a fast-follow if trivial, but don't block this task on it); storing or
+re-serving the uploaded file.
+
 ---
 
 ## In progress
