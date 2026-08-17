@@ -216,6 +216,18 @@ grammar guarantees a following space — capped
 (`MAX_CANDIDATE_CONTINUATION_LINES`) so it can never run away across an
 entire document. See task 16 in `TASKS.md`.
 
+That cap alone wasn't enough for OCR-sourced text (task 11): confirmed
+against real OCR output from an actual scanned report, a single misread
+character (Tesseract dropping one closing `)`) can leave the
+unbalanced-parens signal permanently true, so folding never resolves on
+its own and runs all the way to the line cap — pulling unrelated report
+sections (e.g. a "CULTURES" header and a disclaimer footer) into one
+long garbled candidate. `_looks_like_section_boundary()` is a second,
+independent stop condition: a standalone all-uppercase, digit-free line
+is specific enough to never collide with real ISCN content (which always
+mixes in numbers), so folding stops cleanly before a section header no
+matter what the paren-balance signal says. See task 17 in `TASKS.md`.
+
 **Case-level clinical assessment:** every parse also returns a top-level
 `assessment` (`assess_case()` in `iscn_parser.py`) that rolls the case's
 findings up into one plain-English summary, plus an explicit flag when a
@@ -242,7 +254,7 @@ confidence is worse than an honest "I don't understand this token."
 Two modules under `backend/tests/`, both stdlib `unittest`, both
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 74 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 76 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)
@@ -274,7 +286,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-77 tests total, all passing as of this build — I ran them in the sandbox
+79 tests total, all passing as of this build — I ran them in the sandbox
 this was built in, they're not just claimed to pass.
 
 ## Working on this repo

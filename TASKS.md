@@ -310,6 +310,50 @@ data that was given," not new validation.
 
 ## Done
 
+### 17. Stop OCR continuation folding from swallowing unrelated report sections
+
+**Context**: Follow-up from testing PR #8 (task 11, OCR fallback) with an
+actual scanned PDF, rather than a synthetic one — a 300 DPI rasterization
+of the real report used in tasks 13/16, re-embedded as a genuine
+image-only PDF (no text layer) and run through real Tesseract OCR.
+Task 16's continuation logic (folding subsequent lines into a candidate
+that looks structurally incomplete) works well against clean text-layer
+extraction, but real OCR output includes real character-level misreads —
+in this case, Tesseract garbled one closing `)` entirely, permanently
+unbalancing the paren-count signal task 16 relies on to know when to
+stop. Confirmed directly: running task 16's actual logic against the
+real OCR text never resolved "complete," ran to the 15-line safety cap,
+and folded in the report's `CULTURES` section header and its disclaimer
+footer — a worse outcome than task 16's fix was meant to prevent, not a
+neutral one.
+
+**Done when**: a candidate stops folding in more lines the moment the
+next line looks like a standalone report section header, independent of
+what the paren-balance signal says — verified against the real OCR text
+that exposed this.
+
+**Out of scope**: any attempt to correct or interpret the OCR
+misread itself (the dropped `)`) — this task is only about where folding
+stops, not about repairing corrupted content, consistent with this
+tool's standing rule against auto-correcting extracted text.
+
+Done: `_looks_like_section_boundary()` in `iscn_parser.py` — a line that,
+stripped, is non-empty, contains no digits, and is entirely uppercase
+(e.g. `CULTURES`, `COMMENT`, `SIGNATURE` — a real, recurring pattern
+across this exact report's own sections) is specific enough to never
+collide with actual ISCN content, which always mixes in numbers (locus
+bands, copy counts, cell counts). The continuation loop in
+`find_candidate_iscn_lines()` now also stops before folding in a line
+matching this, regardless of the paren-balance/trailing-comma/`ish`
+signals from task 16. Verified against the exact real OCR text
+(hardcoded in a test): folding now stops cleanly right before
+`CULTURES`, capturing the complete (still OCR-garbled, but bounded and
+complete) FISH panel rather than either the original one-line truncation
+or the section-swallowing regression this task fixes. 3 new tests (79
+total, all passing): the real OCR text case, a minimal deterministic
+case isolating just the mechanism, and confirmed against all of task
+16's existing tests with no regressions.
+
 ### 16. Fix multi-line ISCN strings in PDF text extraction
 
 **Context**: Bug report from live use, with a real (de-identified example)
