@@ -840,6 +840,40 @@ def assess_case(clones: List[CloneResult]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Candidate-line detection (task 8: PDF report upload)
+#
+# Finds substrings shaped like an ISCN karyotype string inside a larger
+# block of free text (e.g. text extracted from a lab report PDF). This is
+# deliberately loose — a real modal-number-then-sex-chromosome prefix is
+# the strongest, simplest signal available, and full validation is already
+# parse_iscn()'s job, not this function's. Candidates are surfaced for
+# human review before ever being parsed; this never auto-corrects or
+# trims what it finds (e.g. trailing prose caught on the same line), by
+# design — see task 8's "Out of scope" in TASKS.md.
+# ---------------------------------------------------------------------------
+
+CANDIDATE_LINE_RE = re.compile(r'\b\d{2,3}(?:~\d{2,3})?,[XY]{1,5}\b.*')
+
+
+def find_candidate_iscn_lines(text: str) -> List[str]:
+    """Scan `text` line by line for substrings that look like they start an
+    ISCN karyotype string (a modal number followed by a sex-chromosome
+    constitution, e.g. "46,XY,"). Returns each match — from that starting
+    point to the end of its line, exactly as found — in the order
+    encountered. Never raises on unparseable/garbled input; worst case is
+    an empty or noisy result, which is exactly what surfacing-for-review
+    is meant to catch."""
+    candidates = []
+    for line in text.splitlines():
+        m = CANDIDATE_LINE_RE.search(line)
+        if m:
+            candidate = m.group(0).strip()
+            if candidate:
+                candidates.append(candidate)
+    return candidates
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 

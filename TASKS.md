@@ -14,10 +14,11 @@ at the bottom of `## Backlog` following the same three-field format.
 
 1. Read the task's **Context** and open those files first.
 2. Write/extend tests under `backend/tests/` that encode **Done when**
-   *before* changing `iscn_parser.py` — the existing 31 tests are the
+   *before* changing `iscn_parser.py` — the existing test suite is the
    regression net; new behavior should get the same treatment.
-3. Run `python3 -m unittest tests.test_iscn_parser -v` from `backend/`
-   until everything passes.
+3. Run `python3 -m unittest discover -s tests -v` from `backend/` until
+   everything passes (this runs every `test_*.py` module under
+   `backend/tests/`, not just `test_iscn_parser.py`).
 4. Update `README.md`'s "What this prototype covers" section if the task
    changed what the parser understands — that section is the source of
    truth for scope, and it drifting from reality is worse than a missing
@@ -131,47 +132,6 @@ plain-text version turns out to be insufficient.
 
 ---
 
-### 8. Upload a lab PDF report and detect the ISCN string
-
-**Context**: New capability — no existing code path touches PDFs.
-`backend/main.py` currently only accepts an ISCN string typed, pasted, or
-(tasks 6/7) loaded from a plain-text file, always client-side. Real lab
-cytogenetics reports are mostly prose (patient/specimen info, methodology,
-interpretation) with the karyotype buried in it as a short, distinctively-
-shaped line — almost always starting with a valid modal-number pattern
-(e.g. `46,XY,` or `47,XX,+21...`), which `iscn_parser.py` already knows how
-to recognize and is the strongest signal to search on. Extracting text from
-a PDF needs a new Python dependency (e.g. `pdfplumber` or `pypdf`) added to
-`backend/requirements.txt` — there's no precedent for this in the repo, so
-whichever is picked should be noted in the commit message along with why.
-
-**Done when**:
-- A file input accepts a PDF; its text is extracted **server-side** (new
-  endpoint, since this needs a Python PDF library — not doable client-side
-  the way tasks 6/7 were) and scanned for line(s) shaped like an ISCN
-  karyotype string.
-- Detected candidate string(s) are surfaced for review, not silently
-  auto-parsed as ground truth — e.g. pre-filled into the existing batch
-  textarea (reusing tasks 6/7's batch-parse path) so the user sees exactly
-  what was extracted before it's interpreted, since real-world PDF layouts
-  can break lines or introduce extraction artifacts.
-- A report with zero confident candidates says so plainly rather than
-  faking a result — same "honest unrecognized" principle the parser
-  already follows for tokens it can't parse.
-- A report with multiple karyotype lines (e.g. several specimens) surfaces
-  all of them through the batch path, labeled as today.
-- Covered by a few small hand-built sample PDFs: one clean single-karyotype
-  report, one with two karyotype lines, one with none.
-
-**Out of scope**: OCR / scanned-image PDFs with no text layer — real lab
-reports are frequently scanned paper, so this isn't hypothetical, but it's
-a different enough extraction path (and dependency) that it's split out as
-task 11 rather than folded in here; extracting anything beyond the
-karyotype string itself (patient name, specimen ID, ordering physician,
-etc.); auto-correcting malformed extracted text before parsing — if
-extraction produces something that doesn't parse cleanly, that surfaces
-through the existing error/warning UI as-is, not patched.
-
 ---
 
 ### 10. Compare tool assessment against an uploaded lab report's interpretation
@@ -276,6 +236,75 @@ as blocked/under-review, not "resolved" preemptively.
 *(none)*
 
 ## Done
+
+### 8. Upload a lab PDF report and detect the ISCN string
+
+**Context**: New capability — no existing code path touches PDFs.
+`backend/main.py` currently only accepts an ISCN string typed, pasted, or
+(tasks 6/7) loaded from a plain-text file, always client-side. Real lab
+cytogenetics reports are mostly prose (patient/specimen info, methodology,
+interpretation) with the karyotype buried in it as a short, distinctively-
+shaped line — almost always starting with a valid modal-number pattern
+(e.g. `46,XY,` or `47,XX,+21...`), which `iscn_parser.py` already knows how
+to recognize and is the strongest signal to search on. Extracting text from
+a PDF needs a new Python dependency (e.g. `pdfplumber` or `pypdf`) added to
+`backend/requirements.txt` — there's no precedent for this in the repo, so
+whichever is picked should be noted in the commit message along with why.
+
+**Done when**:
+- A file input accepts a PDF; its text is extracted **server-side** (new
+  endpoint, since this needs a Python PDF library — not doable client-side
+  the way tasks 6/7 were) and scanned for line(s) shaped like an ISCN
+  karyotype string.
+- Detected candidate string(s) are surfaced for review, not silently
+  auto-parsed as ground truth — e.g. pre-filled into the existing batch
+  textarea (reusing tasks 6/7's batch-parse path) so the user sees exactly
+  what was extracted before it's interpreted, since real-world PDF layouts
+  can break lines or introduce extraction artifacts.
+- A report with zero confident candidates says so plainly rather than
+  faking a result — same "honest unrecognized" principle the parser
+  already follows for tokens it can't parse.
+- A report with multiple karyotype lines (e.g. several specimens) surfaces
+  all of them through the batch path, labeled as today.
+- Covered by a few small hand-built sample PDFs: one clean single-karyotype
+  report, one with two karyotype lines, one with none.
+
+**Out of scope**: OCR / scanned-image PDFs with no text layer — real lab
+reports are frequently scanned paper, so this isn't hypothetical, but it's
+a different enough extraction path (and dependency) that it's split out as
+task 11 rather than folded in here; extracting anything beyond the
+karyotype string itself (patient name, specimen ID, ordering physician,
+etc.); auto-correcting malformed extracted text before parsing — if
+extraction produces something that doesn't parse cleanly, that surfaces
+through the existing error/warning UI as-is, not patched.
+
+Done: chose `pypdf` over `pdfplumber` specifically for having zero
+transitive dependencies of its own (`pip show pypdf` → `Requires:`
+empty), matching this project's stated minimal-dependency stance —
+`pdfplumber` pulls in `pdfminer.six`, `Pillow`, and more, which felt like
+too much weight for "extract embedded text from typically-simple
+single-column lab reports." Also added `python-multipart`, a runtime
+requirement of FastAPI's `UploadFile` support, not something either PDF
+library needed. New endpoint `POST /api/extract-pdf` in `main.py`;
+detection logic (`find_candidate_iscn_lines()`, a modal-number +
+sex-chromosome-prefix regex) lives in `iscn_parser.py`, keeping it
+framework-agnostic like the rest of that file. Frontend deliberately does
+**not** auto-run parse after a PDF upload (unlike the `.txt` upload) —
+candidates are loaded into the textarea for review only, since PDF
+extraction is inherently a guess, not a trusted input.
+
+Tests: 6 new in `TestCandidateLineDetection` (pure text-scanning logic,
+zero extra dependencies) plus a new module `test_pdf_extraction.py` (3
+tests) that builds small PDFs entirely in-code — hand-rolled raw PDF
+syntax, no external PDF-authoring library, no binary fixture files
+committed — covering exactly task 8's three required cases (single
+candidate, two candidates, none). Deliberately skipped FastAPI's
+`TestClient` (needs `httpx`, not otherwise a dependency); the actual HTTP
+route was verified by hand in the browser instead — a real generated PDF
+uploaded through the live UI via a dispatched `change` event, covering
+the success, zero-candidate, and non-PDF-file-rejected paths. 65 tests
+total, all passing. README and the "How to pick up a task" test command
+both updated for the new two-module test suite.
 
 ### 2. Expand APPROX_TERMINAL_BANDS coverage
 
