@@ -90,6 +90,18 @@ def parse_band(b: str):
 # original 4 acrocentric entries. Still worth spot-checking against a
 # current ISCN reference chart before relying on this for anything beyond
 # "does this look obviously wrong."
+#
+# A note on staleness: the major band NAMES here (classical G-banding,
+# e.g. "q37") are quite stable and don't move with genome-assembly
+# revisions — but the GRCh38-derived data this was sourced from is a
+# sequence-coordinate mapping, not the ISCN nomenclature committee's own
+# publication, and that mapping can shift slightly across assembly
+# versions. This table is a soft-warning-only heuristic specifically
+# because of that gap between "good public proxy" and "actual ISCN
+# standard." See task 4 in TASKS.md, which already covers sourcing real
+# ISCN edition text — if/when that's ever picked up, re-verifying this
+# table against the primary source (rather than a genome-assembly proxy)
+# should happen at the same time, not on a separate schedule.
 # ---------------------------------------------------------------------------
 APPROX_TERMINAL_BANDS = {
     "1": {"p": 36, "q": 44},
