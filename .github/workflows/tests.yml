@@ -27,10 +27,6 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r backend/requirements.txt
 
-      - name: DEBUG OCR output
-        run: python3 tests/_debug_ocr.py
-        working-directory: backend
-
       - name: Run test suite
         run: python3 -m unittest discover -s tests -v
         working-directory: backend

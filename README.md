@@ -327,9 +327,15 @@ confidence is worse than an honest "I don't understand this token."
 ## Testing
 
 A GitHub Actions workflow (`.github/workflows/tests.yml`) runs the full
-suite below — including the OCR tests, via an `apt-get install
-tesseract-ocr` step — on every push to `main` and every pull request
-(task 19).
+suite below — including the OCR tests, via `apt-get install tesseract-
+ocr fonts-dejavu-core` steps — on every push to `main` and every pull
+request (task 19). The font install matters, not just Tesseract itself:
+this workflow's first real run caught PIL's own bundled default font
+rendering a "4" that real Tesseract misreads as "A" (confirmed on two
+different Tesseract builds) — `test_ocr_extraction.py` now renders its
+fixture text with a real system font when one's available (DejaVu on
+Linux, Arial on macOS), falling back to PIL's default only if neither is
+installed.
 
 Three modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:

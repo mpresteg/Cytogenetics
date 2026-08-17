@@ -275,6 +275,24 @@ push to `main` and on every pull request, so both the OCR path and the
 rest of the suite (94 tests total) run without relying on whoever's
 merging to have run them locally first.
 
+This workflow's first real run caught a genuine cross-environment bug
+in `test_ocr_extraction.py`, not a bug in this project's own code: the
+test fixture rendered its sample text with PIL's own bundled default
+font, and real Tesseract — on *both* the CI runner's older build (5.3.4,
+Ubuntu's apt package) and, once actually compared side by side, a newer
+local build too (5.5.3, Homebrew/macOS) — misread that font's "4" glyph
+as "A" (`"46,XY,"` → `"AG,XY,"` / `"A6,XY,"`), confirmed directly with a
+temporary debug step printing the raw OCR output before diagnosing.
+Switching to a real system font fixed it: `_load_test_font()` in
+`test_ocr_extraction.py` now tries a short list of well-known TrueType
+paths (DejaVu, Liberation, Arial) before falling back to PIL's default,
+and the CI workflow installs `fonts-dejavu-core` alongside
+`tesseract-ocr` so a real font is guaranteed present there. No font
+binary vendored into the repo — every path tried is either an
+OS-installable package or a common existing system font, consistent
+with treating Tesseract itself as a declared OS-level dependency rather
+than bundling a copy of it.
+
 ### 18. Consistent auto-parse behavior across input sources; show lab interpretation immediately on PDF upload
 
 **Context**: User observation from live use — the four ways to get text
