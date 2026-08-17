@@ -987,6 +987,74 @@ def find_candidate_iscn_lines(text: str) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
+# Lab-reported interpretation extraction (task 10)
+#
+# Looks for a section in an uploaded PDF's text introduced by a small,
+# documented set of header strings real reports use for their own
+# clinical interpretation, so it can be shown side-by-side with this
+# tool's own case-level assessment (task 9) — never compared or scored
+# automatically, just shown together for a human to read both.
+#
+# Deliberately narrower than the header list this task started from
+# ("Interpretation:", "Comment:", "Clinical Correlation:"): checked
+# against a real report (Warde Medical Laboratory), its "COMMENT" section
+# is generic disclaimer boilerplate ("Chromosome analysis will not detect
+# subtle translocations...", FDA/CLIA language) — not case-specific
+# interpretation. Treating "Comment" as a header would have mislabeled
+# that disclaimer text as "the lab's interpretation," which is actively
+# misleading, worse than finding nothing. Left out until a report that
+# genuinely uses "Comment" for real interpretive content turns up.
+#
+# "COMMENT" (and a few other real section headers from that same report)
+# instead anchor where extraction STOPS. A generic "any all-caps line"
+# stop rule — like find_candidate_iscn_lines' own
+# _looks_like_section_boundary — doesn't work here: a genuine sub-heading
+# *within* an interpretation section (e.g. "OVERALL INTERPRETATION"
+# itself, confirmed present in that same real report) can also be
+# all-uppercase, so a generic rule would cut extraction off after just
+# the header line. A specific, small terminator list avoids that.
+# ---------------------------------------------------------------------------
+
+LAB_INTERPRETATION_HEADER_RE = re.compile(
+    r'^(?:overall\s+|clinical\s+)?interpretation\s*:?\s*$'
+    r'|^clinical\s+correlation\s*:?\s*$',
+    re.IGNORECASE,
+)
+
+LAB_INTERPRETATION_TERMINATOR_RE = re.compile(
+    r'^(?:comment|signature|results|cultures|karyotypes|fish images|cpt codes)\s*:?\s*$',
+    re.IGNORECASE,
+)
+
+MAX_LAB_INTERPRETATION_LINES = 80
+
+
+def find_lab_interpretation(text: str) -> Optional[str]:
+    """Finds and extracts a lab-reported interpretation section from
+    `text`, if the document has one. Returns None if no matching header
+    is found — callers should surface that plainly (see task 10's Done
+    when), not leave a blank space that reads as "nothing to report."
+    Real-world PDF text extraction is noisy (page headers/footers can
+    land mid-section — confirmed against an actual report); this doesn't
+    attempt to clean that up, just bounds it with a line cap, consistent
+    with this tool's "never silently patch extracted text" rule."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not LAB_INTERPRETATION_HEADER_RE.match(line.strip()):
+            continue
+        collected = [line.strip()]
+        j = i + 1
+        while (j < len(lines)
+               and not LAB_INTERPRETATION_TERMINATOR_RE.match(lines[j].strip())
+               and len(collected) < MAX_LAB_INTERPRETATION_LINES):
+            collected.append(lines[j].strip())
+            j += 1
+        block = re.sub(r'\n{3,}', '\n\n', "\n".join(collected)).strip()
+        return block if block else None
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Combined karyotype + FISH clone (ISCN's '<karyotype>.nuc ish ...' form)
 #
 # ISCN uses '/' to separate genuinely different clones (different cell

@@ -134,38 +134,6 @@ plain-text version turns out to be insufficient.
 
 ---
 
-### 10. Compare tool assessment against an uploaded lab report's interpretation
-
-**Context**: Depends on task 8 (PDF upload + ISCN-string detection) and
-task 9 (case-level assessment) both existing first. Task 8's scope
-explicitly excludes extracting anything beyond the karyotype string
-itself, so a lab report's own written interpretation/comment section isn't
-captured yet. This task adds extracting *that* section (when present) and
-displaying it next to this tool's own generated assessment from task 9,
-so a user can compare them — not attempting to automatically judge
-agreement or disagreement between two pieces of free text.
-
-**Done when**: when a PDF uploaded via task 8's flow contains a section
-introduced by one of a small, documented set of header strings (e.g.
-"Interpretation:", "Comment:", "Clinical Correlation:"), that section's
-text is extracted and shown side-by-side with this tool's task-9
-assessment, each clearly and separately labeled ("Lab-reported
-interpretation" vs. "This tool's interpretation") so the two are never
-visually conflated or merged into one voice. If no such section is found,
-that's stated plainly rather than leaving a blank space that reads as
-"nothing to report." Covered by extending task 8's sample PDFs with one
-that includes a labeled interpretation section and one that doesn't.
-
-**Out of scope**: any automated concordance/discordance scoring or NLP
-comparison between the two texts — the human reads both, the tool doesn't
-judge them; editing, correcting, or annotating the lab's interpretation;
-any recommendation or next-step guidance based on discordance between the
-two.
-
----
-
----
-
 ### 12. Incorporate clinical review feedback on the hematologic-malignancy flag (task 9)
 
 **Context**: Task 9 added a case-level assessment (`MALIGNANCY_KNOWLEDGE`,
@@ -273,6 +241,85 @@ data that was given," not new validation.
 *(none)*
 
 ## Done
+
+### 10. Compare tool assessment against an uploaded lab report's interpretation
+
+**Context**: Depends on task 8 (PDF upload + ISCN-string detection) and
+task 9 (case-level assessment) both existing first. Task 8's scope
+explicitly excludes extracting anything beyond the karyotype string
+itself, so a lab report's own written interpretation/comment section isn't
+captured yet. This task adds extracting *that* section (when present) and
+displaying it next to this tool's own generated assessment from task 9,
+so a user can compare them — not attempting to automatically judge
+agreement or disagreement between two pieces of free text.
+
+**Done when**: when a PDF uploaded via task 8's flow contains a section
+introduced by one of a small, documented set of header strings (e.g.
+"Interpretation:", "Comment:", "Clinical Correlation:"), that section's
+text is extracted and shown side-by-side with this tool's task-9
+assessment, each clearly and separately labeled ("Lab-reported
+interpretation" vs. "This tool's interpretation") so the two are never
+visually conflated or merged into one voice. If no such section is found,
+that's stated plainly rather than leaving a blank space that reads as
+"nothing to report." Covered by extending task 8's sample PDFs with one
+that includes a labeled interpretation section and one that doesn't.
+
+**Out of scope**: any automated concordance/discordance scoring or NLP
+comparison between the two texts — the human reads both, the tool doesn't
+judge them; editing, correcting, or annotating the lab's interpretation;
+any recommendation or next-step guidance based on discordance between the
+two.
+
+Done, with one deliberate deviation from the starting header list,
+confirmed against the same real report used in tasks 13/16/17: its
+"COMMENT" section is generic FDA/CLIA disclaimer boilerplate, not
+case-specific interpretation. Treating "Comment" as a trigger header
+would have mislabeled that boilerplate as "the lab's interpretation" —
+actively misleading, worse than finding nothing — so it's left out as a
+*header*, used instead (along with "Signature", "Results", "Cultures",
+"Karyotypes", "FISH Images", "CPT Codes" — all real section names from
+that report) as a *terminator*: extraction stops there. A generic "any
+all-caps line stops extraction" rule (reusing task 17's
+`_looks_like_section_boundary()`) doesn't work for this — a genuine
+sub-heading *inside* the interpretation ("OVERALL INTERPRETATION" itself,
+confirmed present in that report) is also all-uppercase, so that rule
+would cut extraction off after just the header line. A small, specific
+terminator list avoids that.
+
+New `find_lab_interpretation()` in `iscn_parser.py`; `main.py`'s
+`/api/extract-pdf` now scans the full document (all pages' text
+concatenated, whichever source — text layer or OCR — each page used) and
+returns `lab_interpretation` plus `lab_interpretation_used_ocr`. Real
+extracted text is noisy across a page boundary (confirmed: page-2
+header/footer content lands mid-section in the raw pypdf output) —
+accepted as-is rather than cleaned up, consistent with this tool's
+"never silently patch extracted text" rule; bounded by
+`MAX_LAB_INTERPRETATION_LINES` (80) either way.
+
+Frontend: the lab interpretation is captured at upload time but can only
+be shown once the user parses (assessments are computed per parse), so
+it's held client-side (`currentLabInterpretation`) and rendered once,
+at the top of the results, above all batch "Input N of M" blocks — it's
+whole-document information, not tied to one candidate line, so repeating
+it per input would misrepresent the actual N:1 relationship between
+batch entries and one PDF's interpretation. Every case-level assessment
+panel (task 9) now carries an explicit "This tool's interpretation"
+label, always (not just when a lab interpretation is also present), so
+the pairing is predictable rather than appearing/disappearing based on
+hidden state. Uploading a `.txt` file clears any prior PDF's
+interpretation context; a fresh PDF upload replaces it; manual edits to
+the textarea after a PDF upload do not clear it, since the comparison is
+still about the same underlying source document.
+
+11 new tests in `TestLabInterpretationExtraction` (90 total, all
+passing), including the real report's actual interpretation section
+(with its real page-boundary noise) as a byte-preserving regression
+case, and an explicit check that a genuine in-section sub-heading doesn't
+prematurely stop extraction. Verified live end-to-end with the real PDF
+uploaded through the actual UI: both panels render, correctly labeled,
+in the right order, with the full real interpretation text (noise and
+all) captured — and confirmed the comparison persists across manual
+textarea edits but clears on a `.txt` upload.
 
 ### 11. OCR fallback for scanned-image PDF reports
 

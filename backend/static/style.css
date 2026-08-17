@@ -265,6 +265,30 @@ select {
   color: var(--accent-deep);
 }
 
+.lab-interpretation-panel {
+  background: var(--accent-tint);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 18px;
+}
+.lab-interpretation-label { color: var(--accent-deep); }
+.lab-interpretation-text {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-line;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.lab-interpretation-caveat {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  color: var(--warn);
+}
+
 .assessment-panel {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -276,6 +300,8 @@ select {
   background: var(--warn-bg);
   border-color: #e6c98a;
 }
+.assessment-label { color: var(--muted); }
+.assessment-panel.flagged .assessment-label { color: var(--warn); }
 
 .assessment-summary {
   margin: 0;

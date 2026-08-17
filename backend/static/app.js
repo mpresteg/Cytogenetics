@@ -10,6 +10,16 @@ const uploadPdfBtn = document.getElementById('upload-pdf-btn');
 const pdfFileInput = document.getElementById('pdf-file-input');
 const ocrReviewPanel = document.getElementById('ocr-review-panel');
 
+// task 10: the lab's own written interpretation, extracted from the most
+// recently uploaded PDF (if any), held here so it can be shown alongside
+// this tool's generated assessment once the user clicks Parse -- the two
+// happen at different times (upload vs. parse), so this bridges them.
+// undefined = no PDF uploaded this session (don't show a comparison at
+// all); null = a PDF was uploaded but no interpretation section was
+// found in it (say so plainly); a string = the extracted section text.
+let currentLabInterpretation;
+let currentLabInterpretationUsedOcr = false;
+
 async function loadEditions() {
   try {
     const res = await fetch('/api/editions');
@@ -70,9 +80,11 @@ fileInput.addEventListener('change', () => {
   const file = fileInput.files[0];
   if (!file) return;
 
-  // A .txt upload has no PDF/OCR context, so drop any leftover OCR
-  // caution from a previous PDF upload rather than show a stale one.
+  // A .txt upload switches to a plain-text source with no PDF/OCR/lab-
+  // report context, so drop anything left over from a previous PDF
+  // upload rather than show it stale.
   hideOcrReviewPanel();
+  currentLabInterpretation = undefined;
 
   const reader = new FileReader();
   reader.onload = () => {
@@ -119,6 +131,11 @@ function showUploadStatus(message, isError = false) {
 // extracted text, and OCR provenance is called out separately, in
 // ocrReviewPanel (see renderOcrReviewPanel below) — visible, but outside
 // the parseable input.
+//
+// Also captures the lab's own written interpretation, if the PDF has one
+// (task 10) — held in currentLabInterpretation until the next Parse, so
+// it can be shown alongside this tool's generated assessment for the
+// user to compare. Never auto-compared or scored; just shown together.
 uploadPdfBtn.addEventListener('click', () => pdfFileInput.click());
 
 function hideOcrReviewPanel() {
@@ -150,6 +167,7 @@ pdfFileInput.addEventListener('change', async () => {
   pdfFileInput.value = '';
 
   hideOcrReviewPanel();
+  currentLabInterpretation = undefined;
   showUploadStatus(`Reading "${file.name}"…`);
   const formData = new FormData();
   formData.append('file', file);
@@ -162,6 +180,9 @@ pdfFileInput.addEventListener('change', async () => {
       return;
     }
     const data = await res.json();
+    currentLabInterpretation = data.lab_interpretation ?? null;
+    currentLabInterpretationUsedOcr = !!data.lab_interpretation_used_ocr;
+
     if (data.candidates.length === 0) {
       showUploadStatus(`No karyotype-shaped lines found in "${file.name}" (${data.page_count} page(s)).`, true);
       return;
@@ -194,6 +215,43 @@ async function parseOne(value) {
   return res.json();
 }
 
+// task 10: the lab's own written interpretation (from the most recently
+// uploaded PDF, if any), shown once at the top of the results — it's a
+// whole-document thing, not tied to any one batch line, so it doesn't
+// repeat per "Input N of M" block. Rendered distinctly from this tool's
+// assessment panel(s) below (see renderAssessment()'s "This tool's
+// interpretation" label) so the two voices are never conflated; never
+// auto-compared, just placed together for a human to read both.
+function renderLabInterpretationPanel(interpretation, usedOcr, container) {
+  const panel = document.createElement('div');
+  panel.className = 'lab-interpretation-panel';
+
+  const label = document.createElement('p');
+  label.className = 'eyebrow lab-interpretation-label';
+  label.textContent = 'Lab-reported interpretation';
+  panel.appendChild(label);
+
+  if (interpretation) {
+    const body = document.createElement('pre');
+    body.className = 'lab-interpretation-text';
+    body.textContent = interpretation;
+    panel.appendChild(body);
+    if (usedOcr) {
+      const caveat = document.createElement('p');
+      caveat.className = 'lab-interpretation-caveat';
+      caveat.textContent = 'Extracted via OCR — verify against the original document.';
+      panel.appendChild(caveat);
+    }
+  } else {
+    const empty = document.createElement('p');
+    empty.className = 'placeholder';
+    empty.textContent = 'No lab-reported interpretation section was found in this PDF.';
+    panel.appendChild(empty);
+  }
+
+  container.appendChild(panel);
+}
+
 // Batch mode is a client-side loop over the existing single-string
 // /api/parse endpoint, one request per non-blank line — no new backend
 // endpoint. The parser and API already model exactly one ISCN string per
@@ -207,6 +265,9 @@ async function runParse() {
   try {
     const results = await Promise.all(lines.map(parseOne));
     resultsEl.innerHTML = '';
+    if (currentLabInterpretation !== undefined) {
+      renderLabInterpretationPanel(currentLabInterpretation, currentLabInterpretationUsedOcr, resultsEl);
+    }
     results.forEach((data, idx) => {
       const block = document.createElement('div');
       block.className = 'batch-block';
@@ -235,9 +296,17 @@ function escapeHtml(s) {
 // something — a clearly-labeled, visually distinct list of the matches.
 // Never rendered as a diagnosis; every match's own note text already
 // carries a "Reference note (not diagnostic)" prefix from the backend.
+// Always labeled "This tool's interpretation" (task 10) — not just when
+// a lab-reported interpretation is also shown — so the label is
+// predictable rather than appearing/disappearing based on hidden state.
 function renderAssessment(assessment, container) {
   const panel = document.createElement('div');
   panel.className = `assessment-panel${assessment.flagged ? ' flagged' : ''}`;
+
+  const label = document.createElement('p');
+  label.className = 'eyebrow assessment-label';
+  label.textContent = "This tool's interpretation";
+  panel.appendChild(label);
 
   const summary = document.createElement('p');
   summary.className = 'assessment-summary';

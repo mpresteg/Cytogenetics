@@ -18,7 +18,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from iscn_parser import parse_iscn, find_candidate_iscn_lines  # noqa: E402
+from iscn_parser import parse_iscn, find_candidate_iscn_lines, find_lab_interpretation  # noqa: E402
 
 
 def first_finding(result, clone_idx=0):
@@ -610,6 +610,122 @@ class TestCandidateLineDetection(unittest.TestCase):
         # Capped well short of the full 30-line tail.
         self.assertNotIn("bar29,", candidates[0])
         self.assertIn("bar0,", candidates[0])
+
+
+class TestLabInterpretationExtraction(unittest.TestCase):
+    """find_lab_interpretation() -- task 10's side-by-side comparison
+    against a lab report's own written interpretation."""
+
+    def test_finds_bare_interpretation_header(self):
+        text = (
+            "Patient: Jane Doe\n"
+            "Karyotype: 46,XY,t(9;22)(q34;q11.2)\n"
+            "\n"
+            "INTERPRETATION\n"
+            "Findings are consistent with chronic myeloid leukemia.\n"
+            "\n"
+            "COMMENT\n"
+            "This assay has not been cleared by the FDA.\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIsNotNone(result)
+        self.assertIn("Findings are consistent with", result)
+        self.assertNotIn("FDA", result)
+
+    def test_finds_clinical_correlation_header(self):
+        text = (
+            "46,XY\n"
+            "CLINICAL CORRELATION:\n"
+            "No cytogenetic abnormality detected.\n"
+            "SIGNATURE\n"
+            "Dr. Smith\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIn("No cytogenetic abnormality detected.", result)
+        self.assertNotIn("Dr. Smith", result)
+
+    def test_no_interpretation_section_returns_none(self):
+        text = "Patient: Jane Doe\nKaryotype: 46,XY\nNo further sections here.\n"
+        self.assertIsNone(find_lab_interpretation(text))
+
+    def test_subheading_within_interpretation_does_not_stop_extraction(self):
+        # A genuine sub-heading inside the interpretation (all-uppercase,
+        # like a real report's "OVERALL INTERPRETATION") must not be
+        # mistaken for the end of the section -- only the small,
+        # documented terminator list should stop it.
+        text = (
+            "INTERPRETATION\n"
+            "OVERALL INTERPRETATION\n"
+            "Normal karyotype, no abnormality detected.\n"
+            "COMMENT\n"
+            "Boilerplate disclaimer text.\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIn("OVERALL INTERPRETATION", result)
+        self.assertIn("Normal karyotype, no abnormality detected.", result)
+        self.assertNotIn("Boilerplate", result)
+
+    def test_capped_does_not_run_away_with_no_terminator(self):
+        lines = ["INTERPRETATION"] + [f"line {i}" for i in range(150)]
+        text = "\n".join(lines)
+        result = find_lab_interpretation(text)
+        self.assertLessEqual(len(result.splitlines()), 80)
+
+    def test_real_world_report_interpretation(self):
+        # The actual text pypdf's extract_text() produces for a real lab
+        # report (Warde Medical Laboratory), spanning a page boundary --
+        # note the interleaved page-2 header/footer noise mid-section,
+        # confirmed against the real PDF. This is accepted, not cleaned
+        # up (see the module comment) -- the point is capturing the real
+        # clinical content, not producing a pristine excerpt.
+        text = (
+            "...ISH]\n"
+            "INTERPRETATION\n"
+            "OVERALL INTERPRETATION\n"
+            "Cytogenetics\n"
+            "Normal Karyotype\n"
+            "No consistent numerical or structural chromosome abnormalities were\n"
+            "observed.\n"
+            "Analysis was performed on cells from three unstimulated cultures and a\n"
+            "culture that was stimulated with lymphoid mitogens.\n"
+            "These results are consistent with those observed in a previous sample\n"
+            "from this patient.\n"
+            "Myeloma Profile [Interphase FISH]\n"
+            "Negative for gain of 1q, loss of 1p, -13/del(13q), IGH rearrangements,\n"
+            "del(17p), +5, +9, +11, +15\n"
+            "Fluorescence in situ hybridization (FISH) was performed with\n"
+            "MetaSystems probes specific for chromosomes 1 (CDKN2C, CKS1B), 5\n"
+            "(hTERT), 9 (D9S1783), 11 (D11Z1), 13 (DLEU, LAMP1), 14 (IGH), 15\n"
+            "(D15Z4), and 17 (TP53, NF1).\n"
+            "Two hundred nuclei were examined for each probe, and all results were\n"
+            "within normal limits for the laboratory's established background rates.\n"
+            "Marginal Zone Lymphoma Profile [Interphase FISH]\n"
+            "Negative for gain of 3q/rearrangement of BCL6, -7/del(7q), +12\n"
+            "rpt_ch_\n"
+            "Form: MM RL1\n"
+            "PAGE 1 OF 4\n"
+            "rpt_ch_\n"
+            "EXAMPLE, REPORT W\n"
+            "LABORATORY REPORT\n"
+            "Referral Testing\n"
+            "Test Name Result Flag Ref-Ranges Units Site\n"
+            "Negative for gain of 3q/rearrangement of BCL6, -7/del(7q), +12\n"
+            "FISH was also performed with Vysis probes specific for BCL6 on the long\n"
+            "arm of chromosome 3, and for chromosomes 7 (D7Z1, D7S486) and 12\n"
+            "(D12Z3).\n"
+            "Two hundred nuclei were examined for each probe, and the results are\n"
+            "within normal limits for the laboratory's established background rates.\n"
+            "The marginal zone FISH results are consistent with those observed in\n"
+            "the previous sample.\n"
+            "COMMENT\n"
+            "Chromosome analysis will not detect subtle translocations, deletions,\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIsNotNone(result)
+        self.assertIn("Normal Karyotype", result)
+        self.assertIn("Negative for gain of 1q", result)
+        self.assertIn("Vysis probes specific for BCL6", result)
+        self.assertNotIn("Chromosome analysis will not detect", result)
 
 
 class TestEdition(unittest.TestCase):

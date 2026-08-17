@@ -282,6 +282,25 @@ prognosis, and it cannot distinguish a constitutional finding (e.g. +21)
 from an acquired one, since that needs clinical context (specimen type,
 patient history) this tool doesn't have.
 
+**Comparing against the lab's own interpretation:** when a PDF upload
+(task 8) has a section introduced by "Interpretation," "Overall
+Interpretation," "Clinical Interpretation," or "Clinical Correlation"
+(`find_lab_interpretation()` in `iscn_parser.py`), that text is extracted
+and shown once, at the top of the results, labeled "Lab-reported
+interpretation" — and every case-level assessment panel below it now
+carries an explicit "This tool's interpretation" label, always, so the
+two voices are never conflated. Neither is auto-compared or scored; a
+human reads both. Deliberately **doesn't** treat "Comment" as a trigger
+header, despite that being in this task's original candidate list —
+checked against a real report, its "Comment" section turned out to be
+generic FDA/CLIA disclaimer boilerplate, not case-specific interpretation,
+and mislabeling that as "the lab's interpretation" would be actively
+misleading. "Comment" (and a handful of other real section names —
+"Signature," "Results," "Cultures," "Karyotypes," "FISH Images," "CPT
+Codes") are used instead as *terminators*, marking where extraction
+stops. If no interpretation section is found, that's stated plainly
+rather than a blank space that reads as "nothing to report."
+
 Anything outside all of the above grammar is returned as
 `category: "unrecognized"` with an explicit warning — it's never silently
 mis-parsed or dropped. This matters a lot for a clinical-adjacent tool: false
@@ -292,7 +311,7 @@ confidence is worse than an honest "I don't understand this token."
 Three modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 78 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 84 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)
@@ -303,9 +322,11 @@ pytest-discoverable if that's your preferred runner:
   clinical assessment (each malignancy-associated pattern, the
   complex-karyotype threshold, mosaic clone attribution, and the no-flag
   paths), terminal-band plausibility for every chromosome in
-  `APPROX_TERMINAL_BANDS`, and the PDF/OCR candidate-line detection
-  heuristic (`find_candidate_iscn_lines()`, including its tolerance for a
-  stray space after the comma and its multi-line continuation logic).
+  `APPROX_TERMINAL_BANDS`, the PDF/OCR candidate-line detection heuristic
+  (`find_candidate_iscn_lines()`, including its tolerance for a stray
+  space after the comma and its multi-line continuation logic), and the
+  lab-reported-interpretation extraction heuristic
+  (`find_lab_interpretation()`).
 - `test_pdf_extraction.py` — 3 tests, depends on `pypdf` (a real
   application dependency as of task 8, not a test-only addition).
   Builds small PDFs entirely in-code (raw PDF syntax, no external
@@ -335,7 +356,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-84 tests total, all passing as of this build — I ran them in the sandbox
+90 tests total, all passing as of this build — I ran them in the sandbox
 this was built in, they're not just claimed to pass.
 
 ## Working on this repo
