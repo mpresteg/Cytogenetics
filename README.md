@@ -191,10 +191,14 @@ test than adding a second, list-shaped API contract to maintain.
 
 An "Upload .txt file…" button next to the textarea reads a local
 plain-text file client-side via `FileReader` (one ISCN string per line —
-same shape the textarea expects), drops its contents into the textarea,
-and runs it through the same batch-parse path — no upload to the backend,
-nothing persisted. CSV/XLSX and other formats needing column-mapping are
-out of scope; see task 7 in `TASKS.md`.
+same shape the textarea expects) and drops its contents into the
+textarea — no upload to the backend, nothing persisted. Does **not**
+auto-run parse (task 18) — even though this content is read verbatim
+rather than extracted/guessed at, it still hasn't been seen *inside this
+tool* yet, same as a PDF upload, so it gets the same explicit-Parse-click
+treatment as paste and PDF upload rather than the example dropdown's
+"selecting it is the action" treatment. CSV/XLSX and other formats
+needing column-mapping are out of scope; see task 7 in `TASKS.md`.
 
 **PDF lab report upload:** an "Upload PDF report…" button sends the file
 to a new `POST /api/extract-pdf` endpoint — this one **can't** be
@@ -290,11 +294,15 @@ either as its own header line, or inline with the text on the same line
 convention — an explicit colon is required for the inline form, so
 ordinary prose starting with "Interpretation" doesn't false-trigger)
 (`find_lab_interpretation()` in `iscn_parser.py`) — that text is
-extracted and shown once, at the top of the results, labeled
-"Lab-reported interpretation" — and every case-level assessment panel
-below it now carries an explicit "This tool's interpretation" label,
-always, so the two voices are never conflated. Neither is auto-compared
-or scored; a human reads both.
+extracted and shown at the top of the results, labeled "Lab-reported
+interpretation," **immediately once the PDF is read** (task 18) — not
+gated behind clicking Parse. It comes straight from the PDF's own text,
+independent of which candidate lines get parsed or whether the user
+parses at all, so there's no reason to hide it until Parse runs; Parse
+re-renders the same panel afterward alongside this tool's own
+case-level assessment, which now always carries an explicit "This
+tool's interpretation" label, so the two voices are never conflated.
+Neither is auto-compared or scored; a human reads both.
 
 "Comment" is **not** a trigger header (starting the section), but *is*
 now included as regular content once an interpretation section has

@@ -242,6 +242,58 @@ data that was given," not new validation.
 
 ## Done
 
+### 18. Consistent auto-parse behavior across input sources; show lab interpretation immediately on PDF upload
+
+**Context**: User observation from live use — the four ways to get text
+into the tool disagreed on whether loading it also ran Parse: pasting
+(no auto-parse), the example dropdown (auto-parses), `.txt` upload
+(auto-parsed), and PDF upload (no auto-parse, deliberately, per task 8).
+Separately, the lab-reported interpretation panel (task 10) was only
+rendered inside `runParse()`, so it stayed invisible until the user
+clicked Parse even though it's extracted at upload time and has nothing
+to do with what gets parsed.
+
+**Done when**: one consistent rule replaces the four ad hoc behaviors —
+anything loaded from outside the box (paste, `.txt` upload, PDF upload)
+requires an explicit Parse click; anything chosen from inside the box
+(the example dropdown) runs immediately, since choosing it *is* the
+deliberate action. Separately, the lab-reported interpretation panel
+renders as soon as PDF extraction finishes, independent of Parse.
+
+**Out of scope**: changing the example dropdown's auto-parse behavior
+(it's a deliberate "try this and see" affordance for curated content,
+not an inconsistency to fix); auto-parsing on paste (would mean firing
+requests mid-edit, a different and riskier problem than this task's
+scope).
+
+Done: removed `.txt` upload's `runParse()` call in `app.js` — it now
+loads the file into the textarea and updates the status message
+("...— review before parsing.") to match PDF's phrasing, same as every
+other externally-sourced input. Both `.txt` and PDF upload now also
+clear stale results from a previous document (`resultsEl.innerHTML =
+''`) at the start of a new upload, so old parsed output can't be
+mistaken for a reflection of newly-loaded, not-yet-parsed content.
+
+For the lab interpretation panel: `renderLabInterpretationPanel()` is
+now called directly in the `pdfFileInput` handler right after
+`/api/extract-pdf` responds — before the "no candidates found" check, so
+it shows (including the "none found" message, not just when one exists)
+regardless of whether any candidate lines were detected. `runParse()`
+still re-renders the same panel from the same `currentLabInterpretation`
+value afterward, so the upload-time and parse-time renders never
+disagree, and clicking Parse doesn't duplicate it (verified: exactly one
+`.lab-interpretation-panel` in the DOM before and after Parse).
+
+No backend changes, so no new backend tests (this suite doesn't cover
+`app.js`, consistent with the OCR-prefix fix). Verified live end-to-end
+in the browser: example dropdown still auto-parses; a `.txt` upload
+loads text and stays unparsed until Parse is clicked, with `results`
+empty in between; a real PDF upload (`Sample-Normal-POC-Cyto-Report.pdf`)
+shows the "Lab-reported interpretation" panel immediately after
+upload, before Parse; clicking Parse afterward shows exactly one copy of
+that panel alongside the newly-parsed "This tool's interpretation"
+results.
+
 ### 10. Compare tool assessment against an uploaded lab report's interpretation
 
 **Context**: Depends on task 8 (PDF upload + ISCN-string detection) and
