@@ -284,22 +284,32 @@ patient history) this tool doesn't have.
 
 **Comparing against the lab's own interpretation:** when a PDF upload
 (task 8) has a section introduced by "Interpretation," "Overall
-Interpretation," "Clinical Interpretation," or "Clinical Correlation"
-(`find_lab_interpretation()` in `iscn_parser.py`), that text is extracted
-and shown once, at the top of the results, labeled "Lab-reported
-interpretation" — and every case-level assessment panel below it now
-carries an explicit "This tool's interpretation" label, always, so the
-two voices are never conflated. Neither is auto-compared or scored; a
-human reads both. Deliberately **doesn't** treat "Comment" as a trigger
-header, despite that being in this task's original candidate list —
-checked against a real report, its "Comment" section turned out to be
-generic FDA/CLIA disclaimer boilerplate, not case-specific interpretation,
-and mislabeling that as "the lab's interpretation" would be actively
-misleading. "Comment" (and a handful of other real section names —
-"Signature," "Results," "Cultures," "Karyotypes," "FISH Images," "CPT
-Codes") are used instead as *terminators*, marking where extraction
-stops. If no interpretation section is found, that's stated plainly
-rather than a blank space that reads as "nothing to report."
+Interpretation," "Clinical Interpretation," or "Clinical Correlation" —
+either as its own header line, or inline with the text on the same line
+("Interpretation: Normal karyotype...", a real second report's
+convention — an explicit colon is required for the inline form, so
+ordinary prose starting with "Interpretation" doesn't false-trigger)
+(`find_lab_interpretation()` in `iscn_parser.py`) — that text is
+extracted and shown once, at the top of the results, labeled
+"Lab-reported interpretation" — and every case-level assessment panel
+below it now carries an explicit "This tool's interpretation" label,
+always, so the two voices are never conflated. Neither is auto-compared
+or scored; a human reads both.
+
+"Comment" is **not** a trigger header (starting the section), but *is*
+now included as regular content once an interpretation section has
+started — it stopped extraction early in an earlier version, on the
+reasoning that one real report's "Comment" section was generic FDA/CLIA
+disclaimer boilerplate. That didn't generalize: a second real report's
+"Comment" turned out to be a genuine, case-specific caveat sitting right
+next to a named reviewer. Guessing which convention a given PDF follows
+isn't reliable, and dropping real content is worse than occasionally
+showing boilerplate a human can plainly see and ignore — so extraction
+is deliberately inclusive here, stopping only at a handful of other real
+section names ("Signature," "Results," "Cultures," "Karyotypes," "FISH
+Images," "CPT Codes") that mark a genuine structural boundary. If no
+interpretation section is found, that's stated plainly rather than a
+blank space that reads as "nothing to report."
 
 Anything outside all of the above grammar is returned as
 `category: "unrecognized"` with an explicit warning — it's never silently
@@ -311,7 +321,7 @@ confidence is worse than an honest "I don't understand this token."
 Three modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 84 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 88 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)

@@ -321,6 +321,51 @@ in the right order, with the full real interpretation text (noise and
 all) captured — and confirmed the comparison persists across manual
 textarea edits but clears on a `.txt` upload.
 
+**Revisited** (user review, before merge — asked to see what criteria
+the extraction used before signing off): checked a *second* real report
+(a different lab/template — a products-of-conception cytogenetics
+report), and both deliberate design choices above turned out not to
+generalize:
+
+1. Its `INTERPRETATION:` line has the actual interpretation text inline
+   on the same line ("INTERPRETATION: Normal female karyotype without
+   demonstrable abnormalities."), not on separate lines below a bare
+   header the way Warde's report does. The old header regex required the
+   header word alone on its own line and didn't match this at all — the
+   feature found nothing, not even a truncated result.
+2. Its `COMMENT:` section is genuine, case-specific content ("We cannot
+   rule out the possibility that the cells analyzed... are of maternal
+   origin"), immediately followed by a named reviewer — not generic
+   disclaimer boilerplate like Warde's. Treating `COMMENT` as a
+   terminator (the original call, correct for the one report it was
+   checked against) would have silently cut this off.
+
+Fixed both in `iscn_parser.py`: `LAB_INTERPRETATION_HEADER_RE` now
+matches either the bare-header form or `header: inline content` on one
+line (still requires an explicit colon for the inline form, so ordinary
+prose starting with the word "interpretation" doesn't false-trigger);
+`COMMENT` was removed from `LAB_INTERPRETATION_TERMINATOR_RE` entirely —
+it's now captured like any other content, terminated only by the
+remaining structural section names (`SIGNATURE`, `RESULTS`, `CULTURES`,
+`KARYOTYPES`, `FISH IMAGES`, `CPT CODES`). Rationale: guessing which
+lab's "COMMENT" convention applies to a given PDF isn't reliable from
+the text alone, and silently dropping real content is a worse failure
+mode than occasionally including boilerplate a human reviewing the panel
+can plainly see and ignore themselves — "be inclusive, let the human
+filter" rather than the tool guessing what's significant. More precise
+inclusion/exclusion rules can follow later if a clearer signal turns up.
+
+4 new tests added (94 total, all passing): the inline-header form, a
+sanity check that bare colon-less prose doesn't false-trigger, `COMMENT`
+content now being captured rather than dropped, and a byte-preserving
+regression case using the second real report's actual extracted text
+(including the "Reviewed By:" line and named reviewer, now captured).
+The original real-report regression test was extended through the real
+`SIGNATURE` terminator to confirm the `COMMENT` paragraph is now
+included but extraction still correctly stops before `RESULTS`.
+Re-verified live end-to-end against both real PDFs through the actual
+UI.
+
 ### 11. OCR fallback for scanned-image PDF reports
 
 **Context**: Depends on task 8 existing first. Task 8 extracts embedded

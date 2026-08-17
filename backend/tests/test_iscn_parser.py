@@ -624,13 +624,13 @@ class TestLabInterpretationExtraction(unittest.TestCase):
             "INTERPRETATION\n"
             "Findings are consistent with chronic myeloid leukemia.\n"
             "\n"
-            "COMMENT\n"
-            "This assay has not been cleared by the FDA.\n"
+            "SIGNATURE\n"
+            "Dr. Smith\n"
         )
         result = find_lab_interpretation(text)
         self.assertIsNotNone(result)
         self.assertIn("Findings are consistent with", result)
-        self.assertNotIn("FDA", result)
+        self.assertNotIn("Dr. Smith", result)
 
     def test_finds_clinical_correlation_header(self):
         text = (
@@ -643,6 +643,26 @@ class TestLabInterpretationExtraction(unittest.TestCase):
         result = find_lab_interpretation(text)
         self.assertIn("No cytogenetic abnormality detected.", result)
         self.assertNotIn("Dr. Smith", result)
+
+    def test_finds_inline_header_with_colon_and_content(self):
+        # A different real report's convention (see module comment):
+        # "INTERPRETATION: <text>" all on one line, rather than the
+        # header alone with the text below it.
+        text = (
+            "Results: 46,XX ; FEMALE KARYOTYPE\n"
+            "INTERPRETATION: Normal female karyotype without demonstrable abnormalities.\n"
+            "CPT codes: 88233x4\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIsNotNone(result)
+        self.assertIn("Normal female karyotype without demonstrable abnormalities.", result)
+
+    def test_bare_interpretation_word_without_colon_is_not_a_false_trigger(self):
+        # Ordinary prose that happens to start with "Interpretation" but
+        # has no colon and isn't the section header itself shouldn't
+        # trigger extraction.
+        text = "Interpretation of these results requires clinical correlation.\n"
+        self.assertIsNone(find_lab_interpretation(text))
 
     def test_no_interpretation_section_returns_none(self):
         text = "Patient: Jane Doe\nKaryotype: 46,XY\nNo further sections here.\n"
@@ -659,11 +679,34 @@ class TestLabInterpretationExtraction(unittest.TestCase):
             "Normal karyotype, no abnormality detected.\n"
             "COMMENT\n"
             "Boilerplate disclaimer text.\n"
+            "SIGNATURE\n"
+            "Dr. Smith\n"
         )
         result = find_lab_interpretation(text)
         self.assertIn("OVERALL INTERPRETATION", result)
         self.assertIn("Normal karyotype, no abnormality detected.", result)
-        self.assertNotIn("Boilerplate", result)
+        self.assertIn("Boilerplate disclaimer text.", result)
+        self.assertNotIn("Dr. Smith", result)
+
+    def test_comment_is_captured_not_a_stop_signal(self):
+        # COMMENT sections vary by lab -- some are generic disclaimer
+        # boilerplate (Warde), others hold genuine case-specific caveats
+        # right next to a named reviewer (a second real report's
+        # "COMMENT: We cannot rule out..." / "Reviewed By: ..."). Rather
+        # than guess which applies to a given PDF, COMMENT is captured
+        # like any other content; only a later terminator ends the block.
+        text = (
+            "INTERPRETATION\n"
+            "Findings are consistent with chronic myeloid leukemia.\n"
+            "COMMENT\n"
+            "This assay has not been cleared by the FDA.\n"
+            "SIGNATURE\n"
+            "Dr. Smith\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIn("Findings are consistent with", result)
+        self.assertIn("FDA", result)
+        self.assertNotIn("Dr. Smith", result)
 
     def test_capped_does_not_run_away_with_no_terminator(self):
         lines = ["INTERPRETATION"] + [f"line {i}" for i in range(150)]
@@ -677,7 +720,9 @@ class TestLabInterpretationExtraction(unittest.TestCase):
         # note the interleaved page-2 header/footer noise mid-section,
         # confirmed against the real PDF. This is accepted, not cleaned
         # up (see the module comment) -- the point is capturing the real
-        # clinical content, not producing a pristine excerpt.
+        # clinical content, not producing a pristine excerpt. Extended
+        # through the real COMMENT section (now captured, not skipped --
+        # see module comment) up to the real SIGNATURE terminator.
         text = (
             "...ISH]\n"
             "INTERPRETATION\n"
@@ -719,13 +764,51 @@ class TestLabInterpretationExtraction(unittest.TestCase):
             "the previous sample.\n"
             "COMMENT\n"
             "Chromosome analysis will not detect subtle translocations, deletions,\n"
+            "inversions or other cytogenetic abnormalities that are beyond the\n"
+            "resolution limits of the technology used.\n"
+            "These FISH tests were developed and their analytical performance\n"
+            "characteristics have been determined by AmeriPath Northeast.  They have\n"
+            "not been cleared or approved by the U.S. Food and Drug Administration.\n"
+            "SIGNATURE\n"
+            "Director, Cytogenetics:\n"
+            "Electronic Signature:\n"
+            "RESULTS\n"
+            "ISCN RESULTS\n"
+            "46,XY[20].nuc ish\n"
         )
         result = find_lab_interpretation(text)
         self.assertIsNotNone(result)
         self.assertIn("Normal Karyotype", result)
         self.assertIn("Negative for gain of 1q", result)
         self.assertIn("Vysis probes specific for BCL6", result)
-        self.assertNotIn("Chromosome analysis will not detect", result)
+        self.assertIn("Chromosome analysis will not detect", result)
+        self.assertIn("Food and Drug Administration", result)
+        self.assertNotIn("Electronic Signature", result)
+        self.assertNotIn("ISCN RESULTS", result)
+
+    def test_real_world_second_report_interpretation(self):
+        # A different lab/template's actual extract_text() output (a
+        # products-of-conception report) -- the case that prompted the
+        # header-regex and COMMENT-terminator revisions in the module
+        # comment. "INTERPRETATION:" and "COMMENT:" both appear inline
+        # with content on the same line, and there's a named reviewer
+        # right after -- all of which should now be captured, since this
+        # report has no SIGNATURE/RESULTS/etc. terminator to stop at.
+        text = (
+            "Results: 46,XX ; FEMALE KARYOTYPE\n"
+            "INTERPRETATION: Normal female karyotype without demonstrable abnormalities.\n"
+            "COMMENT: We cannot rule out the possibility that the cells analyzed in this preparation are\n"
+            "of maternal origin.\n"
+            "CPT codes: 88233x4, 88262, 88280, 88291\n"
+            "Cultures Established:\n"
+            "Reviewed By:\n"
+            "KATHLEEN  LEPPIG, M.D.\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIsNotNone(result)
+        self.assertIn("Normal female karyotype without demonstrable abnormalities.", result)
+        self.assertIn("We cannot rule out the possibility", result)
+        self.assertIn("KATHLEEN  LEPPIG, M.D.", result)
 
 
 class TestEdition(unittest.TestCase):

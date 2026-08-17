@@ -995,34 +995,51 @@ def find_candidate_iscn_lines(text: str) -> List[str]:
 # tool's own case-level assessment (task 9) — never compared or scored
 # automatically, just shown together for a human to read both.
 #
-# Deliberately narrower than the header list this task started from
-# ("Interpretation:", "Comment:", "Clinical Correlation:"): checked
-# against a real report (Warde Medical Laboratory), its "COMMENT" section
-# is generic disclaimer boilerplate ("Chromosome analysis will not detect
-# subtle translocations...", FDA/CLIA language) — not case-specific
-# interpretation. Treating "Comment" as a header would have mislabeled
-# that disclaimer text as "the lab's interpretation," which is actively
-# misleading, worse than finding nothing. Left out until a report that
-# genuinely uses "Comment" for real interpretive content turns up.
+# Revised after checking a second real report (a different lab/template
+# than the Warde one this was first built against): "COMMENT" used to be
+# a stop signal rather than a trigger, on the reasoning that Warde's
+# COMMENT section was generic FDA/CLIA disclaimer boilerplate, not
+# case-specific content. That doesn't generalize — this second report's
+# COMMENT is a genuine, case-specific caveat ("We cannot rule out the
+# possibility that the cells analyzed... are of maternal origin"),
+# immediately following its INTERPRETATION line and preceding a named
+# reviewer. Guessing which lab's "COMMENT" convention applies to a given
+# PDF isn't reliable, and silently dropping real content is worse than
+# occasionally including boilerplate a human can plainly see and ignore
+# — so COMMENT is no longer a terminator; it's just included as part of
+# the captured block, same as everything else between the header and the
+# next real terminator.
 #
-# "COMMENT" (and a few other real section headers from that same report)
-# instead anchor where extraction STOPS. A generic "any all-caps line"
-# stop rule — like find_candidate_iscn_lines' own
-# _looks_like_section_boundary — doesn't work here: a genuine sub-heading
-# *within* an interpretation section (e.g. "OVERALL INTERPRETATION"
-# itself, confirmed present in that same real report) can also be
-# all-uppercase, so a generic rule would cut extraction off after just
+# Also revised: the header regex used to require the header word ALONE
+# on its own line ("INTERPRETATION" then the text below, Warde's style).
+# That same second report instead writes "INTERPRETATION: <text>" inline
+# on one line (its whole layout follows a "Label: value" convention
+# throughout) — the old regex didn't match that at all, so this report's
+# interpretation wasn't found even before the COMMENT question came up.
+# Now matches either form: bare header (optionally with a trailing
+# colon), or header + colon + inline content on the same line. Deliberately
+# still requires an explicit colon for the inline-content form (not just
+# "starts with the word interpretation") to avoid matching ordinary prose
+# that happens to start with "Interpretation of these results...".
+#
+# The remaining terminator list (SIGNATURE, RESULTS, CULTURES,
+# KARYOTYPES, FISH IMAGES, CPT CODES) is where extraction STOPS. A
+# generic "any all-caps line" stop rule — like find_candidate_iscn_lines'
+# own _looks_like_section_boundary — doesn't work here: a genuine
+# sub-heading *within* an interpretation section (e.g. "OVERALL
+# INTERPRETATION" itself, confirmed present in the Warde report) can also
+# be all-uppercase, so a generic rule would cut extraction off after just
 # the header line. A specific, small terminator list avoids that.
 # ---------------------------------------------------------------------------
 
 LAB_INTERPRETATION_HEADER_RE = re.compile(
-    r'^(?:overall\s+|clinical\s+)?interpretation\s*:?\s*$'
-    r'|^clinical\s+correlation\s*:?\s*$',
+    r'^(?:(?:overall|clinical)\s+)?interpretation\s*(?::\s*(?:\S.*)?)?$'
+    r'|^clinical\s+correlation\s*(?::\s*(?:\S.*)?)?$',
     re.IGNORECASE,
 )
 
 LAB_INTERPRETATION_TERMINATOR_RE = re.compile(
-    r'^(?:comment|signature|results|cultures|karyotypes|fish images|cpt codes)\s*:?\s*$',
+    r'^(?:signature|results|cultures|karyotypes|fish images|cpt codes)\s*:?\s*$',
     re.IGNORECASE,
 )
 
