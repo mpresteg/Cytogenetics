@@ -253,6 +253,98 @@ class TestFish(unittest.TestCase):
         f = r["clones"][0]["findings"][0]
         self.assertNotIn("Reference note", f["interpretation"])
 
+    def test_fish_only_clone_captures_cell_count(self):
+        # Previously silently dropped -- a standalone FISH clone's own
+        # trailing [N] never made it into cell_count at all.
+        r = parse_iscn("nuc ish(D21S259x3)[200]")
+        clone = r["clones"][0]
+        self.assertEqual(clone["cell_count"], 200)
+        self.assertEqual(len(clone["findings"]), 1)
+
+
+class TestCombinedKaryotypeFish(unittest.TestCase):
+    """ISCN's '<karyotype>[N].nuc ish ...[M]' form: a period joining a
+    karyotype clone to a FISH result for the SAME cell population (as
+    opposed to '/' for a genuinely different clone). Previously
+    unsupported entirely -- see bug report that prompted this."""
+
+    def test_combined_nuc_ish_basic(self):
+        r = parse_iscn("46,XY[20].nuc ish 1p32(CDKN2Cx2),13q34(LAMP1x2)[200]")
+        clone = r["clones"][0]
+        self.assertEqual(clone["modal_number"], 46)
+        self.assertEqual(clone["sex_chromosomes"], "XY")
+        self.assertEqual(clone["cell_count"], 20)
+        self.assertEqual(clone["fish_cell_count"], 200)
+        self.assertFalse(clone["fish_only"])
+        self.assertEqual(clone["errors"], [])
+        self.assertEqual(len(clone["findings"]), 2)
+        self.assertTrue(all(f["category"] == "fish" for f in clone["findings"]))
+
+    def test_combined_plain_ish_with_karyotype_finding(self):
+        # Plain "ish" (not "nuc ish"), and a karyotype abnormality before
+        # the period, not just a normal-count clone.
+        r = parse_iscn("47,XY,+8[10].ish 8cen(D8Z2x3)[10]")
+        clone = r["clones"][0]
+        self.assertEqual(clone["modal_number"], 47)
+        self.assertEqual(clone["cell_count"], 10)
+        self.assertEqual(clone["fish_cell_count"], 10)
+        categories = [f["category"] for f in clone["findings"]]
+        self.assertIn("numerical", categories)
+        self.assertIn("fish", categories)
+
+    def test_band_decimal_does_not_false_trigger_combined_split(self):
+        # A sub-band decimal like "13q14.3" must never be mistaken for the
+        # karyotype/FISH joining period -- it's followed by a digit, not
+        # the word "ish".
+        r = parse_iscn("46,XY[20].nuc ish 13q14.3(DLEUx2)[200]")
+        clone = r["clones"][0]
+        self.assertEqual(clone["cell_count"], 20)
+        self.assertEqual(clone["fish_cell_count"], 200)
+        self.assertEqual(clone["findings"][0]["category"], "fish")
+
+    def test_real_world_multi_probe_report(self):
+        # The actual string from the bug report (embedded line-wraps from
+        # the original paste normalized to spaces here -- see task note
+        # in TASKS.md re: mid-token line-wrap corruption being a separate,
+        # deliberately out-of-scope concern from this fix).
+        raw = (
+            "46,XY[20].nuc ish 1p32(CDKN2Cx2),1q21(CKS1Bx2),5p15(hTERTx2),"
+            "9q22(D9S1783x2),11cen(D11Z1x2),13q14.3(DLEUx2),13q34(LAMP1x2),"
+            "14q32(IGHx2),15cen(D15Z4x2),17p13.1(TP53x2),17q11.2(NF1x2),"
+            "3q27(BCL6x2),7cen(D7Z1x2),7q31(D7S486x2),12cen(D12Z3x2)[200]"
+        )
+        r = parse_iscn(raw)
+        clone = r["clones"][0]
+        self.assertEqual(clone["modal_number"], 46)
+        self.assertEqual(clone["sex_chromosomes"], "XY")
+        self.assertEqual(clone["cell_count"], 20)
+        self.assertEqual(clone["fish_cell_count"], 200)
+        self.assertEqual(clone["errors"], [])
+        self.assertEqual(len(clone["findings"]), 15)
+        self.assertTrue(all(f["category"] == "fish" for f in clone["findings"]))
+        # IGH already has a PROBE_KNOWLEDGE entry, so it should carry its
+        # reference note. (TP53 doesn't yet -- that's task 3, unrelated to
+        # this fix. Note also: the "1p32"/"17p13.1"-style band-locus prefix
+        # written before each probe's own parens in this list-of-loci form
+        # isn't captured anywhere in the output -- a separate, pre-existing
+        # gap this test surfaced but doesn't fix; see TASKS.md.)
+        joined = " ".join(f["interpretation"] for f in clone["findings"])
+        self.assertIn("14q32", joined)
+
+    def test_regular_ish_attached_form_still_works(self):
+        # Regression: the pre-existing "ish" attached mid-comma-list form
+        # (no period) must not be affected by the new period-detection.
+        r = parse_iscn("ish t(9;22)(q34;q11.2)(ABL1+,BCR+)")
+        clone = r["clones"][0]
+        self.assertTrue(clone["fish_only"])
+        self.assertEqual(len(clone["findings"]), 3)
+
+    def test_plain_karyotype_unaffected(self):
+        r = parse_iscn("46,XX,t(9;22)(q34;q11.2)")
+        clone = r["clones"][0]
+        self.assertEqual(clone["fish_cell_count"], None)
+        self.assertFalse(clone["fish_only"])
+
 
 class TestUnrecognized(unittest.TestCase):
     def test_bogus_token_flagged_not_silently_dropped(self):

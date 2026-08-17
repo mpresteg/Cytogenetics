@@ -231,11 +231,123 @@ as blocked/under-review, not "resolved" preemptively.
 
 ---
 
+### 14. Batch mode breaks on ISCN strings with embedded line-wraps
+
+**Context**: `runParse()` in `app.js` splits pasted text on every `\n`
+and treats each resulting line as one independent ISCN string (task 6).
+That assumption breaks when a *single* ISCN string has been copy-pasted
+from a source that word-wrapped it across multiple physical lines (a PDF
+viewer, a Word doc, some EMR "copy" buttons) — confirmed live while
+fixing task 13: a real user-reported string with mid-token line wraps got
+shredded into 5 broken fragments instead of being parsed as one string.
+
+**Done when**: investigate whether a safe, non-guessing improvement
+exists — e.g. only treating a `\n` as a batch-entry boundary when bracket
+depth is balanced at that point (mirroring how `split_top_level()`
+already respects bracket depth for commas), which would fix line wraps
+that happen to fall mid-parenthesis. Confirmed during investigation: this
+alone does **not** fully solve the reported case, since some wraps land
+at bracket-depth-zero points (e.g. right after a comma) that are
+genuinely indistinguishable from an intentional new batch entry — so the
+"done" bar here is "meaningfully reduces the failure without introducing
+false merges of genuinely separate entries," explicitly not "handles
+every possible line-wrapped paste." If no safe improvement is found,
+"done" can also mean: documented clearly (in the UI, not just this file)
+that a single ISCN string must be one unbroken line, with test coverage
+proving today's behavior (whatever it ends up being) is intentional, not
+accidental.
+
+**Out of scope**: any heuristic that tries to *guess* how to rejoin two
+fragments (e.g. detecting "this line doesn't look like a complete
+ISCN string, glue it to the previous one") — too easy to silently
+misjoin two genuinely separate, intentional batch entries. See task 13's
+resolution notes for why this was deferred rather than attempted inline.
+
+---
+
+### 15. Capture band-locus prefix in multi-probe nuc ish lists
+
+**Context**: `parse_fish_only_clone()` in `iscn_parser.py`, "Case 2"
+branch (a `nuc ish(...)` body shaped like `locus(PROBE),locus(PROBE),...`,
+e.g. `1p32(CDKN2Cx2),13q34(LAMP1x2)`). Discovered while fixing task 13:
+`groups = re.findall(r'\(([^()]*)\)', body)` only ever captures what's
+*inside* each probe's own parens — the leading band-locus text (`1p32`,
+`13q34`) immediately before each `(` is silently dropped, never appearing
+anywhere in that probe's `Finding` or its `raw`/`interpretation`. This is
+a real information loss for any multi-locus interphase FISH panel, one of
+the more common way labs report a "FISH panel" result. Pre-existing —
+not introduced by task 13 (which reuses this same branch), just newly
+surfaced by a test exercising a 15-probe real-world panel.
+
+**Done when**: each probe's `Finding` retains its band-locus text, if
+one was given (e.g. as a new field, or folded into `interpretation` — pick
+whichever fits the existing `Finding` shape best and document the choice).
+Tests: a multi-probe list with loci confirms each is captured against the
+right probe (not just present somewhere in the combined output).
+
+**Out of scope**: validating the locus itself against `APPROX_TERMINAL_BANDS`
+or any other plausibility check — this task is just "don't silently drop
+data that was given," not new validation.
+
+---
+
 ## In progress
 
 *(none)*
 
 ## Done
+
+### 13. Support combined karyotype + FISH clone notation (period-joined)
+
+**Context**: Bug report from live use — a real ISCN string of the form
+`46,XY[20].nuc ish 1p32(CDKN2Cx2),...,12cen(D12Z3x2)[200]` failed to
+parse: `sex_chromosomes` came back as garbage
+(`"XY[20].nuc ish 1p32(CDKN2Cx2)"`) and every individual FISH probe came
+back `unrecognized`. Root cause: `parse_iscn()` had zero concept of
+ISCN's `.` (period) convention, which joins a karyotype clone to a FISH
+result for the *same* cell population (as opposed to `/`, which starts a
+genuinely different clone) — the whole string was going through
+`parse_karyotype_clone()`, which has no notion of a trailing FISH clause,
+so everything from `nuc ish` onward got glued onto whatever top-level
+comma-token it fell into.
+
+**Done when**: `<karyotype>[N].nuc ish ...[M]` and `<karyotype>[N].ish
+...[M]` both parse into one combined clone: the karyotype's own
+`modal_number`/`sex_chromosomes`/`cell_count` intact, a new
+`fish_cell_count` for the FISH clause's own count, and findings from both
+halves concatenated (karyotype findings first, then FISH findings, in
+order) with no errors. The join-point detection must not collide with
+band sub-decimals (e.g. `13q14.3`), which are real and common in FISH
+locus lists.
+
+**Out of scope** (surfaced while fixing this, deliberately not addressed
+here — see their own task entries): batch mode's newline-splitting still
+breaks on a *pasted* version of this string if it has mid-token line
+wraps from the source document (task 14); the leading band-locus text in
+a `locus(PROBE),locus(PROBE),...` list isn't captured anywhere in the
+output, a separate pre-existing gap in the same code path (task 15).
+
+Done: new `COMBINED_KARYOTYPE_FISH_RE` in `iscn_parser.py` finds the
+`.` immediately followed by `nuc ish`/`ish` (optionally across
+whitespace, including a stray newline — that part is free, since `\s`
+already spans newlines) and splits there; `parse_combined_karyotype_and_
+fish()` runs the existing `parse_karyotype_clone()` and
+`parse_fish_only_clone()` on each half and merges the results. Also fixed
+a related gap found in the same investigation: `parse_fish_only_clone()`
+was silently dropping ANY standalone FISH clone's own trailing `[N]`
+cell count (e.g. `nuc ish(D21S259x3)[200]` never populated `cell_count`)
+— now it strips and captures it the same way the karyotype parser always
+has. New `fish_cell_count` field on `CloneResult`; `app.js` shows it
+("N FISH nuclei") alongside the existing cell-count meta line.
+
+7 new tests in `TestCombinedKaryotypeFish` plus 1 in `TestFish` (72
+total, all passing) — including the actual reported string (cleaned of
+its incidental line-wraps; see task 14) as a real-world regression case,
+and an explicit check that a band sub-decimal never false-triggers the
+new split. Verified live in the browser with both the wrapped-as-pasted
+version (demonstrating task 14's separate, deliberately-deferred issue)
+and the single-line version (clean parse, all 15 probes recognized,
+`200 FISH nuclei` shown).
 
 ### 8. Upload a lab PDF report and detect the ISCN string
 
