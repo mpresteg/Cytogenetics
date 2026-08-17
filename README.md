@@ -152,6 +152,13 @@ would actually save; looping client-side keeps `iscn_parser.py`'s contract
 at "one ISCN string in, one result out," which is easier to reason about and
 test than adding a second, list-shaped API contract to maintain.
 
+An "Upload .txt file…" button next to the textarea reads a local
+plain-text file client-side via `FileReader` (one ISCN string per line —
+same shape the textarea expects), drops its contents into the textarea,
+and runs it through the same batch-parse path — no upload to the backend,
+nothing persisted. CSV/XLSX and other formats needing column-mapping are
+out of scope; see task 7 in `TASKS.md`.
+
 Anything outside all of the above grammar is returned as
 `category: "unrecognized"` with an explicit warning — it's never silently
 mis-parsed or dropped. This matters a lot for a clinical-adjacent tool: false

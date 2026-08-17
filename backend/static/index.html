@@ -52,6 +52,8 @@
       <textarea id="iscn-input" rows="4" placeholder="e.g. 46,XX,t(9;22)(q34;q11.2)&#10;One string per line to parse a batch."></textarea>
       <div class="controls">
         <button id="parse-btn">Parse</button>
+        <button id="upload-btn" type="button" class="secondary">Upload .txt file…</button>
+        <input type="file" id="file-input" accept=".txt,text/plain" hidden>
         <select id="example-select">
           <option value="">Load an example…</option>
         </select>
@@ -59,6 +61,7 @@
         <label class="edition-label" for="edition-select">ISCN edition</label>
         <select id="edition-select"></select>
       </div>
+      <p id="upload-status" class="upload-status" hidden></p>
     </section>
 
     <section id="results"></section>
@@ -70,7 +73,7 @@
         <li><strong>Numerical</strong><span>+N / -N (gain/loss of a chromosome), +mar / -mar</span></li>
         <li><strong>Structural</strong><span>t() translocation, del() deletion, dup() duplication, inv() inversion, i() isochromosome, r() ring, add() addition, ins() insertion, der() (decomposed), rob(), mar, dmin, hsr()</span></li>
         <li><strong>Mosaicism</strong><span>multiple clones separated by "/", with [N] cell counts</span></li>
-        <li><strong>Batch input</strong><span>one ISCN string per line parses each independently, results labeled by input order</span></li>
+        <li><strong>Batch input</strong><span>one ISCN string per line parses each independently, results labeled by input order — paste directly or upload a plain-text .txt file</span></li>
         <li><strong>FISH</strong><span>nuc ish(...) and ish(...) probe results — probe+, probe-, probeXN, fusion ("con"), amplification ("amp"), with reference notes for well-known probes</span></li>
         <li><strong>Validation</strong><span>modal number format, sex chromosome constitution, band format, a soft cross-check between the stated modal number and the numerical abnormalities listed, and approximate band-plausibility / breakpoint-order checks</span></li>
       </ul>

@@ -190,6 +190,20 @@ button {
 button:hover { background: var(--accent-deep); }
 button:active { transform: translateY(1px); }
 
+button.secondary {
+  background: var(--surface-sunken);
+  color: var(--accent-deep);
+  border: 1px solid var(--line);
+}
+button.secondary:hover { background: var(--accent-tint); }
+
+.upload-status {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.upload-status.error { color: var(--unrecognized); }
+
 select {
   padding: 9px 10px;
   border-radius: 7px;

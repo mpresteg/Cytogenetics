@@ -3,6 +3,9 @@ const parseBtn = document.getElementById('parse-btn');
 const resultsEl = document.getElementById('results');
 const exampleSelect = document.getElementById('example-select');
 const editionSelect = document.getElementById('edition-select');
+const uploadBtn = document.getElementById('upload-btn');
+const fileInput = document.getElementById('file-input');
+const uploadStatus = document.getElementById('upload-status');
 
 async function loadEditions() {
   try {
@@ -53,6 +56,37 @@ parseBtn.addEventListener('click', runParse);
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) runParse();
 });
+
+// File upload: reads a local plain-text file (one ISCN string per line —
+// same shape the textarea already expects) client-side via FileReader and
+// feeds it into the same batch-parse path used for pasted text. No upload
+// to the backend, nothing persisted.
+uploadBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    input.value = reader.result;
+    showUploadStatus(`Loaded "${file.name}".`);
+    runParse();
+  };
+  reader.onerror = () => {
+    showUploadStatus(`Could not read "${file.name}": ${reader.error}.`, true);
+  };
+  reader.readAsText(file);
+
+  // Reset so choosing the same file again still fires 'change'.
+  fileInput.value = '';
+});
+
+function showUploadStatus(message, isError = false) {
+  uploadStatus.textContent = message;
+  uploadStatus.className = isError ? 'upload-status error' : 'upload-status';
+  uploadStatus.hidden = false;
+}
 
 async function parseOne(value) {
   const res = await fetch('/api/parse', {
