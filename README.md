@@ -326,6 +326,11 @@ confidence is worse than an honest "I don't understand this token."
 
 ## Testing
 
+A GitHub Actions workflow (`.github/workflows/tests.yml`) runs the full
+suite below — including the OCR tests, via an `apt-get install
+tesseract-ocr` step — on every push to `main` and every pull request
+(task 19).
+
 Three modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
 
@@ -374,7 +379,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-90 tests total, all passing as of this build — I ran them in the sandbox
+94 tests total, all passing as of this build — I ran them in the sandbox
 this was built in, they're not just claimed to pass.
 
 ## Working on this repo

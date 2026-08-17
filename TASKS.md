@@ -242,6 +242,39 @@ data that was given," not new validation.
 
 ## Done
 
+### 19. CI workflow to run the test suite on every push/PR
+
+**Context**: User noticed the "CI" section on a GitHub PR showed nothing
+running, and the auto-merge checkbox couldn't be checked — there was no
+CI workflow in the repo at all (no `.github/workflows/`), so there was
+nothing to report a check. Test verification up to this point relied
+entirely on running the suite locally before every PR and stating the
+result in the PR body — real, but not independently verifiable by
+GitHub itself.
+
+**Done when**: a GitHub Actions workflow runs `backend/tests/`'s full
+suite on every push to `main` and every pull request, including the OCR
+tests, which need a real local Tesseract binary (no mocked fallback —
+see `test_ocr_extraction.py`'s module docstring).
+
+**Out of scope** (deferred, discussed but not requested this round):
+enabling the repo's "Allow auto-merge" setting, and branch protection
+requiring this check before merging into `main`. Without a required
+check, auto-merge would just merge immediately (nothing to wait for) —
+so this workflow existing is the prerequisite for either, not the whole
+picture. Branch protection would also need care not to break the
+existing convention of pushing `TASKS.md`-only edits straight to `main`
+without a PR.
+
+Done: `.github/workflows/tests.yml` — checks out the repo, sets up
+Python 3.12, installs Tesseract via `apt-get` (the same OS-level,
+non-pip dependency documented in `requirements.txt` and the README's
+"Running it" section), installs `backend/requirements.txt`, and runs
+`python3 -m unittest discover -s tests -v` from `backend/`. Triggers on
+push to `main` and on every pull request, so both the OCR path and the
+rest of the suite (94 tests total) run without relying on whoever's
+merging to have run them locally first.
+
 ### 18. Consistent auto-parse behavior across input sources; show lab interpretation immediately on PDF upload
 
 **Context**: User observation from live use — the four ways to get text
