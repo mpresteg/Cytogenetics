@@ -44,8 +44,32 @@ from test_pdf_extraction import make_test_pdf  # noqa: E402 — reuse task 8's t
 
 MIN_TEXT_LAYER_CHARS = 10  # mirrors main.py's threshold
 
+# A handful of well-known TrueType font paths, tried in order, so this
+# fixture's text renders with a real font's glyph shapes rather than
+# PIL's own bundled default font. Confirmed by direct comparison (not
+# assumed) that PIL's default font's "4" glyph is genuinely ambiguous to
+# real Tesseract -- misread as "A" ("46," -> "AG,"/"A6,") on *both* an
+# older build (5.3.4, Ubuntu's apt package, seen on CI) and a newer one
+# (5.5.3, Homebrew on macOS) -- while the same text in a real system font
+# (Arial, tested locally) reads correctly. Falls back to PIL's default
+# only if none of these paths exist, so the test still runs (just with a
+# somewhat higher chance of an OCR misread) on a machine with neither.
+_CANDIDATE_FONT_PATHS = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Ubuntu, apt: fonts-dejavu-core
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",  # apt: fonts-liberation
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",  # macOS
+    "/System/Library/Fonts/Supplemental/Arial.ttf",  # macOS
+]
 
-def make_test_image_pdf(lines, size=(900, 300)):
+
+def _load_test_font(size):
+    for path in _CANDIDATE_FONT_PATHS:
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size)
+    return ImageFont.load_default(size=size)
+
+
+def make_test_image_pdf(lines, size=(1400, 500)):
     """Builds a minimal, valid, single-page, IMAGE-ONLY PDF: renders
     `lines` onto a bitmap with PIL, embeds it as a JPEG XObject, and
     writes a page whose content stream just draws that image — no text
@@ -53,11 +77,11 @@ def make_test_image_pdf(lines, size=(900, 300)):
     nothing and the OCR fallback path is what has to recover the text."""
     img = Image.new("RGB", size, "white")
     draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default(size=24)
-    y = 10
+    font = _load_test_font(48)
+    y = 15
     for line in lines:
         draw.text((20, y), line, fill="black", font=font)
-        y += 35
+        y += 65
 
     jpeg_buf = io.BytesIO()
     img.save(jpeg_buf, format="JPEG", quality=90)
