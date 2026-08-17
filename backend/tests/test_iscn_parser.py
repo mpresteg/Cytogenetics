@@ -113,6 +113,62 @@ class TestStructural(unittest.TestCase):
         self.assertIn("marker", f["interpretation"])
 
 
+class TestTerminalBandCoverage(unittest.TestCase):
+    """One test per chromosome newly added to APPROX_TERMINAL_BANDS (task 2):
+    a plausible band on that chromosome produces no plausibility warning, and
+    an implausible one does. Uses the q arm for every chromosome since all 12
+    new entries have one (unlike p, which acrocentric chromosome 15 lacks)."""
+
+    def _assert_plausible_and_implausible(self, chrom, plausible, implausible):
+        r_ok = parse_iscn(f"46,XY,del({chrom})({plausible})")
+        f_ok = first_finding(r_ok)
+        self.assertFalse(
+            any("higher than the approximate reference" in w for w in f_ok["warnings"]),
+            f"{plausible} on chromosome {chrom} should not warn")
+
+        r_bad = parse_iscn(f"46,XY,del({chrom})({implausible})")
+        f_bad = first_finding(r_bad)
+        self.assertTrue(
+            any("higher than the approximate reference" in w for w in f_bad["warnings"]),
+            f"{implausible} on chromosome {chrom} should warn")
+
+    def test_chromosome_2(self):
+        self._assert_plausible_and_implausible("2", "q30", "q50")
+
+    def test_chromosome_3(self):
+        self._assert_plausible_and_implausible("3", "q20", "q40")
+
+    def test_chromosome_4(self):
+        self._assert_plausible_and_implausible("4", "q30", "q50")
+
+    def test_chromosome_6(self):
+        self._assert_plausible_and_implausible("6", "q20", "q40")
+
+    def test_chromosome_8(self):
+        self._assert_plausible_and_implausible("8", "q20", "q40")
+
+    def test_chromosome_10(self):
+        self._assert_plausible_and_implausible("10", "q20", "q40")
+
+    def test_chromosome_12(self):
+        self._assert_plausible_and_implausible("12", "q20", "q40")
+
+    def test_chromosome_15(self):
+        self._assert_plausible_and_implausible("15", "q20", "q40")
+
+    def test_chromosome_18(self):
+        self._assert_plausible_and_implausible("18", "q15", "q40")
+
+    def test_chromosome_19(self):
+        self._assert_plausible_and_implausible("19", "q12", "q20")
+
+    def test_chromosome_20(self):
+        self._assert_plausible_and_implausible("20", "q10", "q20")
+
+    def test_chromosome_y(self):
+        self._assert_plausible_and_implausible("Y", "q11", "q20")
+
+
 class TestDerivativeDecomposition(unittest.TestCase):
     def test_der_with_embedded_translocation(self):
         r = parse_iscn("46,XY,der(14)t(14;18)(q32;q21)")

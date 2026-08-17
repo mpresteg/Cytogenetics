@@ -51,25 +51,6 @@ task rather than solving them here.
 
 ---
 
-### 2. Expand APPROX_TERMINAL_BANDS coverage
-
-**Context**: `APPROX_TERMINAL_BANDS` in `backend/iscn_parser.py` currently
-covers 12 chromosomes (1, 5, 7, 9, 11, 13, 14, 16, 17, 21, 22, X). The
-remaining autosomes (2, 3, 4, 6, 8, 10, 12, 15, 18, 19, 20) and Y aren't
-checked at all, so bands on those chromosomes get no plausibility warning
-regardless of how implausible.
-
-**Done when**: table covers all 24 chromosomes with sourced terminal-band
-values (cite the source — an ISCN idiogram reference or cytogenetics atlas
-— in a code comment, since the existing entries are explicitly flagged as
-approximate and unsourced). One test per newly-added chromosome confirming
-both a plausible and an implausible band.
-
-**Out of scope**: sub-band-level validation (i.e. confirming q13.3 exists
-vs just q13) — that needs a much larger data table and should be its own
-task if pursued.
-
----
 
 ### 3. Grow PROBE_KNOWLEDGE / FUSION_KNOWLEDGE
 
@@ -295,6 +276,35 @@ as blocked/under-review, not "resolved" preemptively.
 *(none)*
 
 ## Done
+
+### 2. Expand APPROX_TERMINAL_BANDS coverage
+
+**Context**: `APPROX_TERMINAL_BANDS` in `backend/iscn_parser.py` currently
+covers 12 chromosomes (1, 5, 7, 9, 11, 13, 14, 16, 17, 21, 22, X). The
+remaining autosomes (2, 3, 4, 6, 8, 10, 12, 15, 18, 19, 20) and Y aren't
+checked at all, so bands on those chromosomes get no plausibility warning
+regardless of how implausible.
+
+**Done when**: table covers all 24 chromosomes with sourced terminal-band
+values (cite the source — an ISCN idiogram reference or cytogenetics atlas
+— in a code comment, since the existing entries are explicitly flagged as
+approximate and unsourced). One test per newly-added chromosome confirming
+both a plausible and an implausible band.
+
+**Out of scope**: sub-band-level validation (i.e. confirming q13.3 exists
+vs just q13) — that needs a much larger data table and should be its own
+task if pursued.
+
+Done: all 12 missing chromosomes (2, 3, 4, 6, 8, 10, 12, 15, 18, 19, 20, Y)
+added, sourced from NCBI's GRCh38 ideogram data as tabulated on each
+chromosome's English Wikipedia page (cited in a code comment, with the
+retrieval date) — pulled live via WebFetch this session rather than
+recalled from memory. Chromosome 15 got a q-only entry, matching the
+existing acrocentric-chromosome convention (13, 14, 21, 22). 12 new tests
+in `TestTerminalBandCoverage` (56 total, all passing), one per newly-added
+chromosome, each confirming a plausible band produces no warning and an
+implausible one does. The original 12 entries remain unsourced and still
+flagged as such — out of scope for this task to backfill their sourcing.
 
 ### 9. Case-level clinical assessment, with a hematologic-malignancy flag
 

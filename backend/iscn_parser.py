@@ -74,26 +74,60 @@ def parse_band(b: str):
 # ---------------------------------------------------------------------------
 # Approximate terminal-band reference table, for SANITY-CHECKING ONLY.
 #
-# These are commonly-cited approximate highest major band numbers per arm
-# for a handful of frequently-rearranged chromosomes. They are NOT sourced
-# from an authoritative ISCN idiogram in this prototype and should be
-# verified against a current ISCN reference chart before any clinical use.
-# The intent here is to catch obviously-impossible bands (e.g. 'q90' on a
-# chromosome that tops out around q35), not to certify correctness.
+# Highest major band number per arm, for all 24 chromosomes. The intent is
+# to catch obviously-impossible bands (e.g. 'q90' on a chromosome that tops
+# out around q35), not to certify correctness — this only checks the major
+# band number, never the sub-band decimal.
+#
+# The original 12 entries (1, 5, 7, 9, 11, 13, 14, 16, 17, 21, 22, X) were
+# added without a cited source and flagged as such. The remaining 12
+# (2, 3, 4, 6, 8, 10, 12, 15, 18, 19, 20, Y) were added by taking the
+# terminal band of each arm from the per-chromosome cytogenetic band tables
+# on English Wikipedia (e.g. https://en.wikipedia.org/wiki/Chromosome_2),
+# which are themselves derived from NCBI's GRCh38 ideogram data — retrieved
+# August 2026. Acrocentric chromosomes (13, 14, 15, 21, 22) have no
+# meaningfully-numbered p arm and so have no "p" entry, matching the
+# original 4 acrocentric entries. Still worth spot-checking against a
+# current ISCN reference chart before relying on this for anything beyond
+# "does this look obviously wrong."
+#
+# A note on staleness: the major band NAMES here (classical G-banding,
+# e.g. "q37") are quite stable and don't move with genome-assembly
+# revisions — but the GRCh38-derived data this was sourced from is a
+# sequence-coordinate mapping, not the ISCN nomenclature committee's own
+# publication, and that mapping can shift slightly across assembly
+# versions. This table is a soft-warning-only heuristic specifically
+# because of that gap between "good public proxy" and "actual ISCN
+# standard." See task 4 in TASKS.md, which already covers sourcing real
+# ISCN edition text — if/when that's ever picked up, re-verifying this
+# table against the primary source (rather than a genome-assembly proxy)
+# should happen at the same time, not on a separate schedule.
 # ---------------------------------------------------------------------------
 APPROX_TERMINAL_BANDS = {
     "1": {"p": 36, "q": 44},
+    "2": {"p": 25, "q": 37},
+    "3": {"p": 26, "q": 29},
+    "4": {"p": 16, "q": 35},
     "5": {"p": 15, "q": 35},
+    "6": {"p": 25, "q": 27},
     "7": {"p": 22, "q": 36},
+    "8": {"p": 23, "q": 24},
     "9": {"p": 24, "q": 34},
+    "10": {"p": 15, "q": 26},
     "11": {"p": 15, "q": 25},
+    "12": {"p": 13, "q": 24},
     "13": {"q": 34},
     "14": {"q": 32},
+    "15": {"q": 26},
     "16": {"p": 13, "q": 24},
     "17": {"p": 13, "q": 25},
+    "18": {"p": 11, "q": 23},
+    "19": {"p": 13, "q": 13},
+    "20": {"p": 13, "q": 13},
     "21": {"q": 22},
     "22": {"q": 13},
     "X": {"p": 22, "q": 28},
+    "Y": {"p": 11, "q": 12},
 }
 
 
