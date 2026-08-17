@@ -102,15 +102,33 @@ changes between editions (candidates to verify: marker chromosome /
 supernumerary marker chromosome (sSMC) terminology, complex rearrangement
 `cx` notation, uncertainty marker conventions).
 
+Whoever has primary-source ISCN access for this task should also
+re-verify `APPROX_TERMINAL_BANDS` (same file) against it. That table is
+currently sourced from a GRCh38 genome-assembly proxy (NCBI ideogram data
+via Wikipedia, task 2), not the ISCN nomenclature committee's own
+publication — a reasonable public stand-in, but not the actual standard,
+and assembly-derived coordinate data can drift slightly across genome
+versions in a way the classical ISCN band names themselves don't. Same
+trigger condition as the edition-differences work above (someone with
+real ISCN text in hand), so bundling it in here avoids tracking staleness
+on a separate, arbitrary schedule.
+
 **Done when**: at least 2 more sourced, dated edition differences are in
 `EDITION_NOTES`, each with a code comment citing where the difference comes
 from. A test per new entry, following the pattern of
-`test_rob_edition_note_present`.
+`test_rob_edition_note_present`. Separately: `APPROX_TERMINAL_BANDS`
+checked against the primary ISCN source consulted for this task, with any
+corrections noted (including "no changes needed" if it already checks
+out) and the table's source comment updated to cite the primary text
+instead of (or alongside) the genome-assembly proxy.
 
 **Out of scope**: don't guess at plausible-sounding differences without a
 source — an unsourced "note" here is worse than no note, since it reads as
 authoritative. If a difference can't be confirmed, leave it out and say so
-in the PR/commit description instead of including it anyway.
+in the PR/commit description instead of including it anyway. Re-deriving
+sub-band-level (decimal) precision for `APPROX_TERMINAL_BANDS` is still
+out of scope per task 2 — this only covers re-verifying the major band
+numbers already there.
 
 ---
 
