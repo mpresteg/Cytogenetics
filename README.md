@@ -113,12 +113,14 @@ first to see the raw response shape.
 - A soft consistency check between the stated modal number and the net
   effect of numerical (`+`/`-`) abnormalities listed
 - **Band plausibility (approximate):** two-band structural events (`del`,
-  `dup`, `inv`, `add`) are checked against a small reference table of
-  approximate terminal band numbers for commonly-rearranged chromosomes, and
-  against ISCN's proximal-then-distal breakpoint ordering convention. Both
-  checks only ever produce a *warning*, never a hard error, and the reference
-  table is explicitly labeled as approximate — see the disclaimer in
-  `iscn_parser.py` (`APPROX_TERMINAL_BANDS`).
+  `dup`, `inv`, `add`) are checked against a reference table of approximate
+  terminal band numbers covering all 24 chromosomes, and against ISCN's
+  proximal-then-distal breakpoint ordering convention. Both checks only
+  ever produce a *warning*, never a hard error. 12 of the 24 entries are
+  sourced (NCBI GRCh38 ideogram data via Wikipedia's per-chromosome
+  cytogenetic band tables, cited in a code comment); the original 12 remain
+  unsourced and flagged as such — see `iscn_parser.py`
+  (`APPROX_TERMINAL_BANDS`).
 
 **FISH:**
 - `nuc ish(...)` and `ish(...)` (standalone or attached to a karyotype
@@ -182,7 +184,7 @@ confidence is worse than an honest "I don't understand this token."
 
 ## Testing
 
-`backend/tests/test_iscn_parser.py` — 44 tests, stdlib `unittest` (zero
+`backend/tests/test_iscn_parser.py` — 56 tests, stdlib `unittest` (zero
 dependencies, so it's runnable without `pip install` anything), also
 pytest-discoverable if that's your preferred runner.
 
@@ -197,11 +199,12 @@ Covers: normal karyotypes, numerical abnormalities and the modal-number
 consistency check, every structural token type, `der()` decomposition (both
 forms) and its `rob()` suggestion, mosaicism with cell counts, FISH probe
 parsing (copy number / presence-absence / fusion) and the knowledge-base
-notes, unrecognized-token handling, the edition parameter, and the
-case-level clinical assessment (each malignancy-associated pattern, the
+notes, unrecognized-token handling, the edition parameter, the case-level
+clinical assessment (each malignancy-associated pattern, the
 complex-karyotype threshold, mosaic clone attribution, and the no-flag
-paths). All 44 pass as of this build — I ran them in the sandbox this was
-built in, they're not just claimed to pass.
+paths), and terminal-band plausibility for every chromosome in
+`APPROX_TERMINAL_BANDS`. All 56 pass as of this build — I ran them in the
+sandbox this was built in, they're not just claimed to pass.
 
 ## Working on this repo
 
