@@ -496,6 +496,66 @@ class TestCandidateLineDetection(unittest.TestCase):
     def test_empty_text_returns_empty_list(self):
         self.assertEqual(find_candidate_iscn_lines(""), [])
 
+    def test_real_world_pdf_text_layer_hard_wrap(self):
+        # The exact text pypdf's extract_text() produces from a real lab
+        # report PDF (Warde Medical Laboratory) whose report-generation
+        # software hard-wraps long lines within its own text layer --
+        # nothing to do with OCR. Confirmed to reconstruct byte-for-byte
+        # correctly against the same string parsed cleanly elsewhere.
+        text = (
+            "ISCN RESULTS\n"
+            "46,XY[20].nuc ish\n"
+            "1p32(CDKN2Cx2),1q21(CKS1Bx2),5p15(hTERTx2),9q22(D9S1783x2),11cen(D11Z1x2\n"
+            "),\n"
+            "13q14.3(DLEUx2),13q34(LAMP1x2),14q32(IGHx2),15cen(D15Z4x2),17p13.1(TP53x\n"
+            "2),17q11.2(NF1x2),3q27(BCL6x2),\n"
+            "7cen(D7Z1x2),7q31(D7S486x2),12cen(D12Z3x2)[200]\n"
+            "CULTURES\n"
+            "CULTURES: Direct, 24-hour unstimulated, 48-hour unstimulated, and\n"
+            "72-hour lymphoid mitogen stimulated.\n"
+        )
+        expected = (
+            "46,XY[20].nuc ish 1p32(CDKN2Cx2),1q21(CKS1Bx2),5p15(hTERTx2),"
+            "9q22(D9S1783x2),11cen(D11Z1x2),13q14.3(DLEUx2),13q34(LAMP1x2),"
+            "14q32(IGHx2),15cen(D15Z4x2),17p13.1(TP53x2),17q11.2(NF1x2),"
+            "3q27(BCL6x2),7cen(D7Z1x2),7q31(D7S486x2),12cen(D12Z3x2)[200]"
+        )
+        self.assertEqual(find_candidate_iscn_lines(text), [expected])
+
+    def test_continuation_stops_at_terminal_bracket_not_next_section(self):
+        # The "CULTURES" section header right after the wrapped candidate
+        # above must never get folded in -- confirmed by the previous
+        # test's exact-match assertion, but make the intent explicit here
+        # too: a second, unrelated candidate right after a terminated one
+        # is still found as its own separate entry.
+        text = "46,XY[10]\nCULTURES: standard.\n47,XY,+8[10]\n"
+        self.assertEqual(find_candidate_iscn_lines(text), ["46,XY[10]", "47,XY,+8[10]"])
+
+    def test_continuation_join_inserts_space_only_after_ish(self):
+        text = "46,XY.nuc ish\n1p32(ABCx2)[50]\n"
+        self.assertEqual(
+            find_candidate_iscn_lines(text),
+            ["46,XY.nuc ish 1p32(ABCx2)[50]"],
+        )
+
+    def test_continuation_join_no_space_mid_token(self):
+        # Mirrors the real "TP53x\n2" wrap -- must reassemble as "TP53x2",
+        # not "TP53x 2".
+        text = "46,XY,t(1;2)(p1\n3;q21)[20]\n"
+        self.assertEqual(find_candidate_iscn_lines(text), ["46,XY,t(1;2)(p13;q21)[20]"])
+
+    def test_continuation_capped_does_not_run_away(self):
+        # An unterminated candidate (never closes its open paren, never
+        # stops looking "incomplete") must not swallow the entire rest of
+        # the document -- the safety cap kicks in.
+        lines = ["46,XY,foo("] + [f"bar{i}," for i in range(30)]
+        text = "\n".join(lines)
+        candidates = find_candidate_iscn_lines(text)
+        self.assertEqual(len(candidates), 1)
+        # Capped well short of the full 30-line tail.
+        self.assertNotIn("bar29,", candidates[0])
+        self.assertIn("bar0,", candidates[0])
+
 
 class TestEdition(unittest.TestCase):
     def test_default_edition(self):

@@ -864,26 +864,86 @@ def assess_case(clones: List[CloneResult]) -> Dict[str, Any]:
 # human review before ever being parsed; this never auto-corrects or
 # trims what it finds (e.g. trailing prose caught on the same line), by
 # design — see task 8's "Out of scope" in TASKS.md.
+#
+# A real lab report PDF (Warde Medical Laboratory's report layout,
+# confirmed against an actual example) hard-wraps a long ISCN string
+# across several physical lines *within the PDF's own text layer* —
+# nothing to do with OCR, nothing to do with how it's pasted anywhere;
+# pypdf's extract_text() faithfully reproduces those embedded line
+# breaks. A naive per-line scan (the original version of this function)
+# grabbed only the first fragment and silently dropped everything after
+# it. The continuation logic below recognizes when a candidate can't
+# legally have ended where a physical line did — an unclosed '(', a
+# trailing ',', or ending in the word "ish" (which per ISCN grammar is
+# always followed by more content) — and keeps folding subsequent lines
+# in until none of those hold anymore. Lines are joined with no
+# separator by default (most real-world wraps land mid-token, e.g.
+# "TP53x" + "2" -> "TP53x2") except right after "ish", which ISCN syntax
+# always follows with a space before the probe/rearrangement content.
+# This does not attempt perfect reconstruction in every case — it's a
+# best-effort expansion of what gets surfaced for review, capped so it
+# can never run away across an entire document.
 # ---------------------------------------------------------------------------
 
 CANDIDATE_LINE_RE = re.compile(r'\b\d{2,3}(?:~\d{2,3})?,[XY]{1,5}\b.*')
+
+MAX_CANDIDATE_CONTINUATION_LINES = 15
+
+
+def _candidate_needs_continuation(candidate: str) -> bool:
+    """True if `candidate` can't legally have ended on the line it's on —
+    a structural signal (unbalanced parens, a trailing list comma, or the
+    "ish" keyword expecting more), not a guess about content."""
+    stripped = candidate.rstrip()
+    if not stripped:
+        return False
+    if stripped.count('(') > stripped.count(')'):
+        return True
+    if stripped.endswith(','):
+        return True
+    if re.search(r'\bish$', stripped):
+        return True
+    return False
+
+
+def _continuation_separator(candidate: str) -> str:
+    """How to join the next line onto `candidate`. Defaults to no
+    separator (most wraps are mid-token); "ish" is the one case ISCN
+    grammar guarantees a following space ("nuc ish "/"ish " always
+    precede the probe/rearrangement content)."""
+    if re.search(r'\bish$', candidate.rstrip()):
+        return " "
+    return ""
 
 
 def find_candidate_iscn_lines(text: str) -> List[str]:
     """Scan `text` line by line for substrings that look like they start an
     ISCN karyotype string (a modal number followed by a sex-chromosome
-    constitution, e.g. "46,XY,"). Returns each match — from that starting
-    point to the end of its line, exactly as found — in the order
-    encountered. Never raises on unparseable/garbled input; worst case is
-    an empty or noisy result, which is exactly what surfacing-for-review
-    is meant to catch."""
+    constitution, e.g. "46,XY,"). Each match extends from that starting
+    point to the end of its line — and, if the result still looks
+    structurally incomplete there, folds in subsequent lines too (see
+    module comment above) — in the order encountered. Never raises on
+    unparseable/garbled input; worst case is an empty or noisy result,
+    which is exactly what surfacing-for-review is meant to catch."""
+    lines = text.splitlines()
     candidates = []
-    for line in text.splitlines():
-        m = CANDIDATE_LINE_RE.search(line)
-        if m:
-            candidate = m.group(0).strip()
-            if candidate:
-                candidates.append(candidate)
+    i = 0
+    while i < len(lines):
+        m = CANDIDATE_LINE_RE.search(lines[i])
+        if not m:
+            i += 1
+            continue
+        candidate = m.group(0).strip()
+        i += 1
+        continuations = 0
+        while (_candidate_needs_continuation(candidate)
+               and i < len(lines)
+               and continuations < MAX_CANDIDATE_CONTINUATION_LINES):
+            candidate = candidate.rstrip() + _continuation_separator(candidate) + lines[i].strip()
+            i += 1
+            continuations += 1
+        if candidate:
+            candidates.append(candidate)
     return candidates
 
 
