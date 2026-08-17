@@ -8,7 +8,13 @@ from pydantic import BaseModel
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-from iscn_parser import parse_iscn, find_candidate_iscn_lines, SUPPORTED_EDITIONS, DEFAULT_EDITION
+from iscn_parser import (
+    parse_iscn,
+    find_candidate_iscn_lines,
+    find_lab_interpretation,
+    SUPPORTED_EDITIONS,
+    DEFAULT_EDITION,
+)
 
 app = FastAPI(title="ISCN Validator & Interpreter")
 
@@ -39,13 +45,15 @@ MIN_TEXT_LAYER_CHARS = 10
 
 
 def _extract_page_candidates(page):
-    """Returns (candidates, source) for one PDF page. Prefers the
-    embedded text layer (fast, exact); falls back to OCR — task 11 —
+    """Returns (candidates, source, raw_text) for one PDF page. Prefers
+    the embedded text layer (fast, exact); falls back to OCR — task 11 —
     only when that layer is effectively empty, i.e. this looks like a
-    scanned image rather than a real text-layer PDF."""
+    scanned image rather than a real text-layer PDF. `raw_text` is
+    whichever text was actually used (task 10 also scans the full
+    document's raw text for a lab-reported interpretation section)."""
     text = page.extract_text() or ""
     if len(text.strip()) >= MIN_TEXT_LAYER_CHARS:
-        return find_candidate_iscn_lines(text), "text"
+        return find_candidate_iscn_lines(text), "text", text
 
     ocr_parts = []
     for img in page.images:
@@ -61,7 +69,8 @@ def _extract_page_candidates(page):
                     "tesseract` on macOS)."
                 ),
             )
-    return find_candidate_iscn_lines("\n".join(ocr_parts)), "ocr"
+    ocr_text = "\n".join(ocr_parts)
+    return find_candidate_iscn_lines(ocr_text), "ocr", ocr_text
 
 
 # task 8: PDF lab report upload. Extracts embedded text where a page has
@@ -72,6 +81,11 @@ def _extract_page_candidates(page):
 # review; never auto-parsed here, and OCR-sourced candidates need *more*
 # scrutiny before parsing, not the same amount, given OCR's materially
 # higher error rate on dense, punctuation-heavy ISCN strings.
+#
+# task 10: also scans the full document (all pages' text concatenated,
+# whichever source each page used) for a lab-reported interpretation
+# section, so the frontend can show it alongside this tool's own
+# case-level assessment — never auto-compared, just shown together.
 @app.post("/api/extract-pdf")
 async def extract_pdf(file: UploadFile = File(...)):
     if not (file.filename or "").lower().endswith(".pdf"):
@@ -84,14 +98,28 @@ async def extract_pdf(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"Could not read this PDF: {e}")
 
     candidates = []
+    full_text_parts = []
+    used_ocr = False
     for page in reader.pages:
-        page_candidates, source = _extract_page_candidates(page)
+        page_candidates, source, page_text = _extract_page_candidates(page)
         candidates.extend({"text": c, "source": source} for c in page_candidates)
+        full_text_parts.append(page_text)
+        if source == "ocr":
+            used_ocr = True
+
+    lab_interpretation = find_lab_interpretation("\n".join(full_text_parts))
 
     return {
         "filename": file.filename,
         "page_count": len(reader.pages),
         "candidates": candidates,
+        "lab_interpretation": lab_interpretation,
+        # Whether OCR was used anywhere in the document — only meaningful
+        # (and only sent as true) when an interpretation was actually
+        # found, so the frontend can add a "verify against original"
+        # caveat to that text specifically, same discipline as OCR'd
+        # candidates already get.
+        "lab_interpretation_used_ocr": bool(lab_interpretation) and used_ocr,
     }
 
 

@@ -987,6 +987,91 @@ def find_candidate_iscn_lines(text: str) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
+# Lab-reported interpretation extraction (task 10)
+#
+# Looks for a section in an uploaded PDF's text introduced by a small,
+# documented set of header strings real reports use for their own
+# clinical interpretation, so it can be shown side-by-side with this
+# tool's own case-level assessment (task 9) — never compared or scored
+# automatically, just shown together for a human to read both.
+#
+# Revised after checking a second real report (a different lab/template
+# than the Warde one this was first built against): "COMMENT" used to be
+# a stop signal rather than a trigger, on the reasoning that Warde's
+# COMMENT section was generic FDA/CLIA disclaimer boilerplate, not
+# case-specific content. That doesn't generalize — this second report's
+# COMMENT is a genuine, case-specific caveat ("We cannot rule out the
+# possibility that the cells analyzed... are of maternal origin"),
+# immediately following its INTERPRETATION line and preceding a named
+# reviewer. Guessing which lab's "COMMENT" convention applies to a given
+# PDF isn't reliable, and silently dropping real content is worse than
+# occasionally including boilerplate a human can plainly see and ignore
+# — so COMMENT is no longer a terminator; it's just included as part of
+# the captured block, same as everything else between the header and the
+# next real terminator.
+#
+# Also revised: the header regex used to require the header word ALONE
+# on its own line ("INTERPRETATION" then the text below, Warde's style).
+# That same second report instead writes "INTERPRETATION: <text>" inline
+# on one line (its whole layout follows a "Label: value" convention
+# throughout) — the old regex didn't match that at all, so this report's
+# interpretation wasn't found even before the COMMENT question came up.
+# Now matches either form: bare header (optionally with a trailing
+# colon), or header + colon + inline content on the same line. Deliberately
+# still requires an explicit colon for the inline-content form (not just
+# "starts with the word interpretation") to avoid matching ordinary prose
+# that happens to start with "Interpretation of these results...".
+#
+# The remaining terminator list (SIGNATURE, RESULTS, CULTURES,
+# KARYOTYPES, FISH IMAGES, CPT CODES) is where extraction STOPS. A
+# generic "any all-caps line" stop rule — like find_candidate_iscn_lines'
+# own _looks_like_section_boundary — doesn't work here: a genuine
+# sub-heading *within* an interpretation section (e.g. "OVERALL
+# INTERPRETATION" itself, confirmed present in the Warde report) can also
+# be all-uppercase, so a generic rule would cut extraction off after just
+# the header line. A specific, small terminator list avoids that.
+# ---------------------------------------------------------------------------
+
+LAB_INTERPRETATION_HEADER_RE = re.compile(
+    r'^(?:(?:overall|clinical)\s+)?interpretation\s*(?::\s*(?:\S.*)?)?$'
+    r'|^clinical\s+correlation\s*(?::\s*(?:\S.*)?)?$',
+    re.IGNORECASE,
+)
+
+LAB_INTERPRETATION_TERMINATOR_RE = re.compile(
+    r'^(?:signature|results|cultures|karyotypes|fish images|cpt codes)\s*:?\s*$',
+    re.IGNORECASE,
+)
+
+MAX_LAB_INTERPRETATION_LINES = 80
+
+
+def find_lab_interpretation(text: str) -> Optional[str]:
+    """Finds and extracts a lab-reported interpretation section from
+    `text`, if the document has one. Returns None if no matching header
+    is found — callers should surface that plainly (see task 10's Done
+    when), not leave a blank space that reads as "nothing to report."
+    Real-world PDF text extraction is noisy (page headers/footers can
+    land mid-section — confirmed against an actual report); this doesn't
+    attempt to clean that up, just bounds it with a line cap, consistent
+    with this tool's "never silently patch extracted text" rule."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not LAB_INTERPRETATION_HEADER_RE.match(line.strip()):
+            continue
+        collected = [line.strip()]
+        j = i + 1
+        while (j < len(lines)
+               and not LAB_INTERPRETATION_TERMINATOR_RE.match(lines[j].strip())
+               and len(collected) < MAX_LAB_INTERPRETATION_LINES):
+            collected.append(lines[j].strip())
+            j += 1
+        block = re.sub(r'\n{3,}', '\n\n', "\n".join(collected)).strip()
+        return block if block else None
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Combined karyotype + FISH clone (ISCN's '<karyotype>.nuc ish ...' form)
 #
 # ISCN uses '/' to separate genuinely different clones (different cell

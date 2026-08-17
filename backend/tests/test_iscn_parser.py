@@ -18,7 +18,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from iscn_parser import parse_iscn, find_candidate_iscn_lines  # noqa: E402
+from iscn_parser import parse_iscn, find_candidate_iscn_lines, find_lab_interpretation  # noqa: E402
 
 
 def first_finding(result, clone_idx=0):
@@ -610,6 +610,205 @@ class TestCandidateLineDetection(unittest.TestCase):
         # Capped well short of the full 30-line tail.
         self.assertNotIn("bar29,", candidates[0])
         self.assertIn("bar0,", candidates[0])
+
+
+class TestLabInterpretationExtraction(unittest.TestCase):
+    """find_lab_interpretation() -- task 10's side-by-side comparison
+    against a lab report's own written interpretation."""
+
+    def test_finds_bare_interpretation_header(self):
+        text = (
+            "Patient: Jane Doe\n"
+            "Karyotype: 46,XY,t(9;22)(q34;q11.2)\n"
+            "\n"
+            "INTERPRETATION\n"
+            "Findings are consistent with chronic myeloid leukemia.\n"
+            "\n"
+            "SIGNATURE\n"
+            "Dr. Smith\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIsNotNone(result)
+        self.assertIn("Findings are consistent with", result)
+        self.assertNotIn("Dr. Smith", result)
+
+    def test_finds_clinical_correlation_header(self):
+        text = (
+            "46,XY\n"
+            "CLINICAL CORRELATION:\n"
+            "No cytogenetic abnormality detected.\n"
+            "SIGNATURE\n"
+            "Dr. Smith\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIn("No cytogenetic abnormality detected.", result)
+        self.assertNotIn("Dr. Smith", result)
+
+    def test_finds_inline_header_with_colon_and_content(self):
+        # A different real report's convention (see module comment):
+        # "INTERPRETATION: <text>" all on one line, rather than the
+        # header alone with the text below it.
+        text = (
+            "Results: 46,XX ; FEMALE KARYOTYPE\n"
+            "INTERPRETATION: Normal female karyotype without demonstrable abnormalities.\n"
+            "CPT codes: 88233x4\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIsNotNone(result)
+        self.assertIn("Normal female karyotype without demonstrable abnormalities.", result)
+
+    def test_bare_interpretation_word_without_colon_is_not_a_false_trigger(self):
+        # Ordinary prose that happens to start with "Interpretation" but
+        # has no colon and isn't the section header itself shouldn't
+        # trigger extraction.
+        text = "Interpretation of these results requires clinical correlation.\n"
+        self.assertIsNone(find_lab_interpretation(text))
+
+    def test_no_interpretation_section_returns_none(self):
+        text = "Patient: Jane Doe\nKaryotype: 46,XY\nNo further sections here.\n"
+        self.assertIsNone(find_lab_interpretation(text))
+
+    def test_subheading_within_interpretation_does_not_stop_extraction(self):
+        # A genuine sub-heading inside the interpretation (all-uppercase,
+        # like a real report's "OVERALL INTERPRETATION") must not be
+        # mistaken for the end of the section -- only the small,
+        # documented terminator list should stop it.
+        text = (
+            "INTERPRETATION\n"
+            "OVERALL INTERPRETATION\n"
+            "Normal karyotype, no abnormality detected.\n"
+            "COMMENT\n"
+            "Boilerplate disclaimer text.\n"
+            "SIGNATURE\n"
+            "Dr. Smith\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIn("OVERALL INTERPRETATION", result)
+        self.assertIn("Normal karyotype, no abnormality detected.", result)
+        self.assertIn("Boilerplate disclaimer text.", result)
+        self.assertNotIn("Dr. Smith", result)
+
+    def test_comment_is_captured_not_a_stop_signal(self):
+        # COMMENT sections vary by lab -- some are generic disclaimer
+        # boilerplate (Warde), others hold genuine case-specific caveats
+        # right next to a named reviewer (a second real report's
+        # "COMMENT: We cannot rule out..." / "Reviewed By: ..."). Rather
+        # than guess which applies to a given PDF, COMMENT is captured
+        # like any other content; only a later terminator ends the block.
+        text = (
+            "INTERPRETATION\n"
+            "Findings are consistent with chronic myeloid leukemia.\n"
+            "COMMENT\n"
+            "This assay has not been cleared by the FDA.\n"
+            "SIGNATURE\n"
+            "Dr. Smith\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIn("Findings are consistent with", result)
+        self.assertIn("FDA", result)
+        self.assertNotIn("Dr. Smith", result)
+
+    def test_capped_does_not_run_away_with_no_terminator(self):
+        lines = ["INTERPRETATION"] + [f"line {i}" for i in range(150)]
+        text = "\n".join(lines)
+        result = find_lab_interpretation(text)
+        self.assertLessEqual(len(result.splitlines()), 80)
+
+    def test_real_world_report_interpretation(self):
+        # The actual text pypdf's extract_text() produces for a real lab
+        # report (Warde Medical Laboratory), spanning a page boundary --
+        # note the interleaved page-2 header/footer noise mid-section,
+        # confirmed against the real PDF. This is accepted, not cleaned
+        # up (see the module comment) -- the point is capturing the real
+        # clinical content, not producing a pristine excerpt. Extended
+        # through the real COMMENT section (now captured, not skipped --
+        # see module comment) up to the real SIGNATURE terminator.
+        text = (
+            "...ISH]\n"
+            "INTERPRETATION\n"
+            "OVERALL INTERPRETATION\n"
+            "Cytogenetics\n"
+            "Normal Karyotype\n"
+            "No consistent numerical or structural chromosome abnormalities were\n"
+            "observed.\n"
+            "Analysis was performed on cells from three unstimulated cultures and a\n"
+            "culture that was stimulated with lymphoid mitogens.\n"
+            "These results are consistent with those observed in a previous sample\n"
+            "from this patient.\n"
+            "Myeloma Profile [Interphase FISH]\n"
+            "Negative for gain of 1q, loss of 1p, -13/del(13q), IGH rearrangements,\n"
+            "del(17p), +5, +9, +11, +15\n"
+            "Fluorescence in situ hybridization (FISH) was performed with\n"
+            "MetaSystems probes specific for chromosomes 1 (CDKN2C, CKS1B), 5\n"
+            "(hTERT), 9 (D9S1783), 11 (D11Z1), 13 (DLEU, LAMP1), 14 (IGH), 15\n"
+            "(D15Z4), and 17 (TP53, NF1).\n"
+            "Two hundred nuclei were examined for each probe, and all results were\n"
+            "within normal limits for the laboratory's established background rates.\n"
+            "Marginal Zone Lymphoma Profile [Interphase FISH]\n"
+            "Negative for gain of 3q/rearrangement of BCL6, -7/del(7q), +12\n"
+            "rpt_ch_\n"
+            "Form: MM RL1\n"
+            "PAGE 1 OF 4\n"
+            "rpt_ch_\n"
+            "EXAMPLE, REPORT W\n"
+            "LABORATORY REPORT\n"
+            "Referral Testing\n"
+            "Test Name Result Flag Ref-Ranges Units Site\n"
+            "Negative for gain of 3q/rearrangement of BCL6, -7/del(7q), +12\n"
+            "FISH was also performed with Vysis probes specific for BCL6 on the long\n"
+            "arm of chromosome 3, and for chromosomes 7 (D7Z1, D7S486) and 12\n"
+            "(D12Z3).\n"
+            "Two hundred nuclei were examined for each probe, and the results are\n"
+            "within normal limits for the laboratory's established background rates.\n"
+            "The marginal zone FISH results are consistent with those observed in\n"
+            "the previous sample.\n"
+            "COMMENT\n"
+            "Chromosome analysis will not detect subtle translocations, deletions,\n"
+            "inversions or other cytogenetic abnormalities that are beyond the\n"
+            "resolution limits of the technology used.\n"
+            "These FISH tests were developed and their analytical performance\n"
+            "characteristics have been determined by AmeriPath Northeast.  They have\n"
+            "not been cleared or approved by the U.S. Food and Drug Administration.\n"
+            "SIGNATURE\n"
+            "Director, Cytogenetics:\n"
+            "Electronic Signature:\n"
+            "RESULTS\n"
+            "ISCN RESULTS\n"
+            "46,XY[20].nuc ish\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIsNotNone(result)
+        self.assertIn("Normal Karyotype", result)
+        self.assertIn("Negative for gain of 1q", result)
+        self.assertIn("Vysis probes specific for BCL6", result)
+        self.assertIn("Chromosome analysis will not detect", result)
+        self.assertIn("Food and Drug Administration", result)
+        self.assertNotIn("Electronic Signature", result)
+        self.assertNotIn("ISCN RESULTS", result)
+
+    def test_real_world_second_report_interpretation(self):
+        # A different lab/template's actual extract_text() output (a
+        # products-of-conception report) -- the case that prompted the
+        # header-regex and COMMENT-terminator revisions in the module
+        # comment. "INTERPRETATION:" and "COMMENT:" both appear inline
+        # with content on the same line, and there's a named reviewer
+        # right after -- all of which should now be captured, since this
+        # report has no SIGNATURE/RESULTS/etc. terminator to stop at.
+        text = (
+            "Results: 46,XX ; FEMALE KARYOTYPE\n"
+            "INTERPRETATION: Normal female karyotype without demonstrable abnormalities.\n"
+            "COMMENT: We cannot rule out the possibility that the cells analyzed in this preparation are\n"
+            "of maternal origin.\n"
+            "CPT codes: 88233x4, 88262, 88280, 88291\n"
+            "Cultures Established:\n"
+            "Reviewed By:\n"
+            "KATHLEEN  LEPPIG, M.D.\n"
+        )
+        result = find_lab_interpretation(text)
+        self.assertIsNotNone(result)
+        self.assertIn("Normal female karyotype without demonstrable abnormalities.", result)
+        self.assertIn("We cannot rule out the possibility", result)
+        self.assertIn("KATHLEEN  LEPPIG, M.D.", result)
 
 
 class TestEdition(unittest.TestCase):
