@@ -163,9 +163,10 @@ numbers already there.
 
 ### 5. Export interpretation as text
 
-**Context**: `backend/static/app.js` (`render()` function) and
-`backend/main.py`. No export functionality exists yet — findings are only
-ever rendered live in the DOM.
+**Context**: `backend/static/app.js` (`renderClones()`/`runParse()`,
+which hold the currently-rendered parse result) and `backend/main.py`.
+No export functionality exists yet — findings are only ever rendered
+live in the DOM.
 
 **Done when**: a "Copy interpretation" button in the results area copies a
 plain-text rendering of the current parse result to the clipboard (modal
@@ -176,8 +177,6 @@ readable as plain text (e.g. in an email), not just a JSON dump.
 **Out of scope**: PDF export, or any backend-side report generation —
 client-side plain text first; PDF can be a separate follow-up task if the
 plain-text version turns out to be insufficient.
-
----
 
 ---
 
@@ -207,8 +206,6 @@ coverage the same as task 9's did.
 **Out of scope**: guessing at answers to the open questions without actual
 clinician input — if feedback hasn't arrived yet, this task stays exactly
 as blocked/under-review, not "resolved" preemptively.
-
----
 
 ---
 
@@ -362,19 +359,19 @@ interpretation text, no cross-attribution.
 
 ### 20. Clearer in-progress indicator for slow file loads (PDF/OCR)
 
-**Context**: `pdfFileInput` change handler in `backend/static/app.js`
-(around line 184). The only sign of work happening today is a text swap
-via `showUploadStatus('Reading "..."…')` — same small, muted-gray
-`.upload-status` paragraph (`backend/static/style.css` around line 200)
-used for the final result message, no visual distinction between "still
-working" and "done." For a text-layer PDF this resolves fast enough that
-it barely matters, but the OCR fallback (task 11,
-`extract_text_ocr_fallback` server-side) rasterizes and OCRs each
-image-only page and can take several seconds per page — during which nothing
-on screen changes, the upload button stays clickable, and a user has no way
-to tell "still working" from "silently did nothing." The plain-text `.txt`
-upload path (`fileInput` handler, same file) is synchronous/instant and
-doesn't need this.
+**Context**: `pdfFileInput` change handler in `backend/static/app.js`.
+The only sign of work happening today is a text swap via
+`showUploadStatus('Reading "..."…')` — same small, muted-gray
+`.upload-status` paragraph (`backend/static/style.css`) used for the
+final result message, no visual distinction between "still working" and
+"done." For a text-layer PDF this resolves fast enough that it barely
+matters, but the OCR fallback (task 11, `_extract_page_candidates()` in
+`main.py`) rasterizes and OCRs each image-only page and can take several
+seconds per page — during which nothing on screen changes, the upload
+button stays clickable, and a user has no way to tell "still working"
+from "silently did nothing." The plain-text `.txt` upload path
+(`fileInput` handler, same file) is synchronous/instant and doesn't
+need this.
 
 **Done when**: while a PDF upload request is in flight, the UI shows an
 unambiguous busy signal distinct from the resting/result state — e.g. a
