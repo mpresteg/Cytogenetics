@@ -8,6 +8,7 @@ const fileInput = document.getElementById('file-input');
 const uploadStatus = document.getElementById('upload-status');
 const uploadPdfBtn = document.getElementById('upload-pdf-btn');
 const pdfFileInput = document.getElementById('pdf-file-input');
+const uploadPdfSpinner = document.getElementById('upload-pdf-spinner');
 const ocrReviewPanel = document.getElementById('ocr-review-panel');
 
 // task 10: the lab's own written interpretation, extracted from the most
@@ -211,6 +212,16 @@ function renderOcrReviewPanel(ocrCandidates) {
   ocrReviewPanel.hidden = false;
 }
 
+// task 20: the only prior sign of work happening was the status text
+// swap to "Reading ...", easy to miss -- for a text-layer PDF that
+// resolves fast enough it barely matters, but the OCR fallback (task 11)
+// rasterizes and OCRs each image-only page and can take several seconds
+// per page, during which nothing changed and the upload button stayed
+// clickable (a second click mid-request could fire an overlapping
+// upload). Now: the button + file input are disabled and a spinner
+// shows for the duration of the request, cleared via `finally` so it
+// resets on every exit path -- success, a handled error response, or a
+// thrown exception -- not just the happy path.
 pdfFileInput.addEventListener('change', async () => {
   const file = pdfFileInput.files[0];
   if (!file) return;
@@ -222,6 +233,10 @@ pdfFileInput.addEventListener('change', async () => {
   showUploadStatus(`Reading "${file.name}"…`);
   const formData = new FormData();
   formData.append('file', file);
+
+  uploadPdfBtn.disabled = true;
+  pdfFileInput.disabled = true;
+  uploadPdfSpinner.hidden = false;
 
   try {
     const res = await fetch('/api/extract-pdf', { method: 'POST', body: formData });
@@ -256,6 +271,10 @@ pdfFileInput.addEventListener('change', async () => {
     renderOcrReviewPanel(ocrCandidates);
   } catch (e) {
     showUploadStatus(`Request failed: ${e}`, true);
+  } finally {
+    uploadPdfBtn.disabled = false;
+    pdfFileInput.disabled = false;
+    uploadPdfSpinner.hidden = true;
   }
 });
 

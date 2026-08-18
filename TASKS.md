@@ -269,6 +269,12 @@ data that was given," not new validation.
 
 ---
 
+## In progress
+
+*(none)*
+
+## Done
+
 ### 20. Clearer in-progress indicator for slow file loads (PDF/OCR)
 
 **Context**: `pdfFileInput` change handler in `backend/static/app.js`
@@ -299,13 +305,23 @@ noticeable, not just a fast text-layer PDF.
 currently report per-page progress to the client — that's a bigger,
 separate change); changing OCR performance itself.
 
----
+Done: `upload-pdf-btn` and `pdf-file-input` are disabled and a small
+CSS spin animation (`.spinner` in `style.css`, next to the upload
+button) shows for the duration of the `/api/extract-pdf` request, set
+right before the `fetch` call and cleared in a `finally` block so it
+resets on every exit path — the success path, a handled non-OK response,
+and a thrown exception — not just the happy path. Deliberately kept
+separate from task 21 (touches the same handler, but a different moment
+— in-flight vs. just-landed — and needs different verification: an
+actual slow OCR case here vs. an instant text-layer case there).
 
-## In progress
-
-*(none)*
-
-## Done
+No backend changes. Verified live against a synthetic OCR-sourced PDF
+(built with `test_ocr_extraction.py`'s own fixture helper, so the delay
+is real, not simulated): confirmed both the button and file input are
+disabled and the spinner visible partway through the request (checked
+50ms after dispatch, before the response returns), and that both
+re-enable and the spinner hides after completion — on the success path,
+and separately on an error path (a corrupt, non-PDF file).
 
 ### 21. Visible "click Parse" cue after PDF/.txt upload
 

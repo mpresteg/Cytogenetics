@@ -197,6 +197,30 @@ button.secondary {
 }
 button.secondary:hover { background: var(--accent-tint); }
 
+button:disabled, button.secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+button.secondary:disabled:hover { background: var(--surface-sunken); }
+
+/* task 20: busy indicator while a PDF upload request is in flight (OCR
+   in particular can take several seconds per page, during which nothing
+   else on screen changes) -- a small spinning ring next to the upload
+   button, shown/hidden alongside disabling the button itself. */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .upload-status {
   margin: 10px 0 0;
   font-size: 0.85rem;
