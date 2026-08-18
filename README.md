@@ -196,6 +196,25 @@ would actually save; looping client-side keeps `iscn_parser.py`'s contract
 at "one ISCN string in, one result out," which is easier to reason about and
 test than adding a second, list-shaped API contract to maintain.
 
+Before splitting on `\n`, `runParse()` first runs `foldLineWrappedEntries()`
+(task 14) to fold back together a *single* ISCN string that's been
+copy-pasted from a source that word-wrapped it across several physical
+lines (a PDF viewer, a Word doc, some EMR "copy" buttons) — the same
+structural signal (`lineNeedsContinuation()`/`continuationSeparator()`)
+`iscn_parser.py`'s PDF-text-extraction path already uses server-side
+(task 16): a line can't legally have ended where it did if it has an
+unclosed `(`, a trailing list comma, or ends in "ish" — never a guess
+about what two lines' content means, so genuinely separate batch entries
+are never at risk of a false merge, only ever a line that looks
+structurally incomplete on its own. A blank line always breaks folding
+(a batch-mode-only addition over the server-side version, since a
+user's own paste can have intentional blank-line separators a PDF's
+extracted text doesn't); capped the same way, so a genuine unclosed-
+paren typo can't silently swallow every following entry. Some wraps
+(landing right where a paren pair happens to already be balanced) are
+structurally indistinguishable from an intentional new entry and are
+deliberately left unfixed rather than guessed at.
+
 An "Upload .txt file…" button next to the textarea reads a local
 plain-text file client-side via `FileReader` (one ISCN string per line —
 same shape the textarea expects) and drops its contents into the

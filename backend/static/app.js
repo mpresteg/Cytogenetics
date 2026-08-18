@@ -324,6 +324,81 @@ function renderLabInterpretationPanel(interpretation, usedOcr, container) {
   container.appendChild(panel);
 }
 
+// task 14: batch mode's contract (task 6) is "one line = one entry," which
+// breaks when a *single* ISCN string has been copy-pasted from a source
+// that word-wrapped it across several physical lines (a PDF viewer, a
+// Word doc, some EMR "copy" buttons) -- confirmed live with a real
+// user-reported string that got shredded into broken fragments instead
+// of parsing as one. Ported from the same structural signal
+// `_candidate_needs_continuation()` / `_continuation_separator()` in
+// `iscn_parser.py` already use for the analogous PDF-text-extraction
+// problem (task 16): a line can't legally have ended where it did if
+// it has an unclosed '(', a trailing list comma, or ends in "ish" (ISCN
+// grammar always follows that word with more content) -- a structural
+// signal, not a guess about what the content means.
+//
+// Batch mode's "one line = one entry" is a *stronger* assumption to
+// bend than PDF-text scanning's "no per-line contract at all" (task 16
+// itself flagged this), so this only ever folds a line into the
+// immediately preceding entry when that entry itself looks
+// structurally incomplete -- it never merges two lines that both look
+// complete on their own, so genuinely separate, intentional batch
+// entries are never at risk of a false merge. Capped the same way (see
+// MAX_LINE_WRAP_CONTINUATIONS) so a single unresolved unclosed paren
+// (e.g. a genuine typo, not a wrap) can't silently swallow every
+// subsequent entry into one candidate. A blank line is treated as a
+// deliberate separator and always breaks folding, even mid-wrap --
+// there's no legitimate reason a real line wrap would land on a blank
+// line, so this is a free, unambiguous extra safety margin.
+const MAX_LINE_WRAP_CONTINUATIONS = 15;
+
+function lineNeedsContinuation(candidate) {
+  const stripped = candidate.replace(/\s+$/, '');
+  if (!stripped) return false;
+  const opens = (stripped.match(/\(/g) || []).length;
+  const closes = (stripped.match(/\)/g) || []).length;
+  if (opens > closes) return true;
+  if (stripped.endsWith(',')) return true;
+  if (/\bish$/.test(stripped)) return true;
+  return false;
+}
+
+function continuationSeparator(candidate) {
+  // Defaults to no separator (most real-world wraps land mid-token,
+  // e.g. "TP53x" + "2" -> "TP53x2"); "ish" is the one case ISCN grammar
+  // guarantees a following space ("nuc ish "/"ish " always precede the
+  // probe/rearrangement content).
+  return /\bish$/.test(candidate.replace(/\s+$/, '')) ? ' ' : '';
+}
+
+function foldLineWrappedEntries(rawText) {
+  const folded = [];
+  let continuations = 0;
+  // True whenever the *immediately preceding physical line* was blank (or
+  // there isn't a previous entry yet) -- folding is only allowed right
+  // after a genuinely non-blank line, so a blank line always breaks it,
+  // regardless of what the structural-continuation check on its own
+  // would otherwise say.
+  let blockedByBlankLine = true;
+  for (const rawLine of rawText.split('\n')) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      blockedByBlankLine = true;
+      continue;
+    }
+    const prev = folded.length ? folded[folded.length - 1] : null;
+    if (!blockedByBlankLine && prev !== null && lineNeedsContinuation(prev) && continuations < MAX_LINE_WRAP_CONTINUATIONS) {
+      folded[folded.length - 1] = prev.replace(/\s+$/, '') + continuationSeparator(prev) + trimmed;
+      continuations += 1;
+    } else {
+      folded.push(trimmed);
+      continuations = 0;
+    }
+    blockedByBlankLine = false;
+  }
+  return folded;
+}
+
 // Batch mode is a client-side loop over the existing single-string
 // /api/parse endpoint, one request per non-blank line — no new backend
 // endpoint. The parser and API already model exactly one ISCN string per
@@ -331,7 +406,7 @@ function renderLabInterpretationPanel(interpretation, usedOcr, container) {
 // so looping client-side avoids inventing a batch request/response shape
 // in main.py for what is really just "run parse N times".
 async function runParse() {
-  const lines = input.value.split('\n').map(l => l.trim()).filter(Boolean);
+  const lines = foldLineWrappedEntries(input.value);
   if (!lines.length) return;
   resultsEl.innerHTML = '<p class="placeholder">Parsing…</p>';
   try {
