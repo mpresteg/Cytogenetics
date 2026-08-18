@@ -243,6 +243,12 @@ before reusing it as-is.
 
 ---
 
+## In progress
+
+*(none)*
+
+## Done
+
 ### 15. Capture band-locus prefix in multi-probe nuc ish lists
 
 **Context**: `parse_fish_only_clone()` in `iscn_parser.py`, "Case 2"
@@ -267,13 +273,36 @@ right probe (not just present somewhere in the combined output).
 or any other plausibility check — this task is just "don't silently drop
 data that was given," not new validation.
 
----
+Done: `interpret_fish_token()` gained an optional `prefix_locus`
+parameter (used only when the token has no locus of its own via the
+pre-existing suffix form, `_LOCUS_SUFFIX_RE`, so the two never
+conflict); folded into `interpretation` the same way the suffix form
+already was (`"(locus {locus})"`), and into a new `bands=[locus]` on
+the `Finding` — reusing the same field structural findings already use
+for breakpoint bands, rather than inventing a new one.
 
-## In progress
+`parse_fish_only_clone()`'s Case 2 branch now extracts each
+`(locus, probe_list)` pair with a new `_GROUP_WITH_LOCUS_RE` (a locus
+group, possibly empty, followed by its parens) instead of the old
+paren-only `re.findall`, and passes that locus to every probe found in
+`split_top_level()` of that group — so a locus shared by multiple probes
+inside one set of parens (`1p32(CDKN2Cx2,OTHERx1)`) applies to both, and
+a list with no locus prefix at all behaves exactly as before (regression
+covered explicitly).
 
-*(none)*
-
-## Done
+3 new tests (91 in `test_iscn_parser.py`, 97 total): per-probe locus
+correctly attributed and not cross-attributed to the wrong probe, a
+locus shared across multiple probes in one group, and the no-locus-
+prefix form still producing empty `bands`/no "locus" text. Also
+strengthened the existing 15-probe real-world regression test, which
+previously only incidentally passed via IGH's own `PROBE_KNOWLEDGE` note
+text (its reference note text happens to start with "14q32", its actual
+genomic locus, coincidentally masking that the fix wasn't actually being
+tested) — now separately asserts on CDKN2C, which has no knowledge-note
+of its own, so the locus can only be coming from the input string.
+Verified against the real CHRTU-1.pdf FISH panel (all 15 probes) and
+live in the browser: every probe's locus renders correctly in its own
+interpretation text, no cross-attribution.
 
 ### 20. Clearer in-progress indicator for slow file loads (PDF/OCR)
 
