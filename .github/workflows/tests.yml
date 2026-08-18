@@ -20,6 +20,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          # Caches pip's download/build cache, keyed on requirements.txt's
+          # hash -- ~10s of every prior run's ~27s total was just `pip
+          # install` re-downloading/re-building the same packages from
+          # scratch every time; this is a built-in, zero-risk option, no
+          # workflow logic change.
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install Tesseract OCR (system dependency, not pip-installable)
         run: sudo apt-get update && sudo apt-get install -y tesseract-ocr fonts-dejavu-core
