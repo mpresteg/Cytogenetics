@@ -323,6 +323,24 @@ disabled and the spinner visible partway through the request (checked
 re-enable and the spinner hides after completion — on the success path,
 and separately on an error path (a corrupt, non-PDF file).
 
+**Revisited** (user report, live use right after merge): the spinner
+never actually hid — it was visible at rest, not just during an upload.
+Root cause: `.spinner { display: inline-block; ... }` and the browser's
+own UA-stylesheet rule `[hidden] { display: none }` have *equal* CSS
+specificity (one class selector each), and author CSS wins a
+specificity tie against UA styles — so `.spinner`'s own `display`
+declaration silently overrode `hidden` every time, regardless of the
+JS toggling `element.hidden`. This is exactly why the original
+verification above didn't catch it: it checked `element.hidden` (the
+DOM property/attribute, which *did* toggle correctly) but never checked
+`getComputedStyle(element).display` (the actual rendered state, which
+never left `"block"`) — attribute state and rendered state silently
+diverged. Fixed with an explicit `.spinner[hidden] { display: none; }`
+rule (two selectors = higher specificity than `.spinner` alone, so it
+reliably wins). Re-verified with the correct check this time —
+`getComputedStyle`, not just the attribute — confirming `none` at rest,
+`block` mid-upload, `none` again after completion.
+
 ### 21. Visible "click Parse" cue after PDF/.txt upload
 
 **Context**: User observation from live use, right after task 18 shipped.

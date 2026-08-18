@@ -206,7 +206,17 @@ button.secondary:disabled:hover { background: var(--surface-sunken); }
 /* task 20: busy indicator while a PDF upload request is in flight (OCR
    in particular can take several seconds per page, during which nothing
    else on screen changes) -- a small spinning ring next to the upload
-   button, shown/hidden alongside disabling the button itself. */
+   button, shown/hidden (via the native `hidden` attribute) alongside
+   disabling the button itself.
+
+   The explicit `.spinner[hidden]` rule below matters, not just
+   decoration: the browser's own UA stylesheet hides `[hidden]` elements
+   via `[hidden] { display: none }`, a normal-priority rule -- and
+   `.spinner`'s own `display: inline-block` has equal specificity, so
+   without this override, author CSS wins the tie and the element stays
+   visible even while `hidden` is set. Confirmed directly (not assumed):
+   without this rule, `element.hidden` correctly toggled true/false but
+   `getComputedStyle(element).display` never actually became "none". */
 .spinner {
   display: inline-block;
   width: 16px;
@@ -217,6 +227,7 @@ button.secondary:disabled:hover { background: var(--surface-sunken); }
   animation: spin 0.7s linear infinite;
   vertical-align: middle;
 }
+.spinner[hidden] { display: none; }
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
