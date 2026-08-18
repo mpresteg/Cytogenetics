@@ -303,6 +303,17 @@ select {
 .assessment-label { color: var(--muted); }
 .assessment-panel.flagged .assessment-label { color: var(--warn); }
 
+.pending-parse {
+  background: var(--surface-sunken);
+  border-style: dashed;
+  border-color: var(--line-strong);
+}
+.pending-parse .placeholder {
+  color: var(--ink);
+  font-style: normal;
+}
+.pending-parse strong { color: var(--accent-deep); }
+
 .assessment-summary {
   margin: 0;
   line-height: 1.5;
