@@ -307,6 +307,52 @@ separate change); changing OCR performance itself.
 
 ## Done
 
+### 21. Visible "click Parse" cue after PDF/.txt upload
+
+**Context**: User observation from live use, right after task 18 shipped.
+Task 18 made the lab-reported interpretation panel render immediately on
+PDF upload, in the same results area `renderAssessment()`'s "This tool's
+interpretation" panel normally occupies after Parse. That created a new
+problem: once that panel appears, the screen already has visible content
+in the results area, so there's no obvious cue that a second, different
+kind of information (this tool's own interpretation, including whether
+anything matched the hematologic-malignancy reference table) hasn't been
+generated yet and still needs an explicit Parse click. The same gap
+exists for `.txt` upload (also non-auto-parsing since task 18), just
+less visually deceptive there since the results area is simply empty
+rather than looking complete.
+
+**Done when**: after a PDF or `.txt` upload that loads parseable content
+into the textarea, the results area shows an explicit, visible cue that
+this tool's interpretation hasn't been generated yet and Parse needs to
+be clicked — not just relying on the small `.upload-status` text near
+the textarea.
+
+**Out of scope**: auto-parsing on upload (already deliberately rejected
+per tasks 8/18); a persistent/animated attention-grabber on the Parse
+button itself — a static placeholder in the results area was judged
+sufficient without extra motion/urgency.
+
+Done: `renderPendingParsePlaceholder()` in `app.js` renders a dashed-
+border card using the exact same `.assessment-panel` markup and "This
+tool's interpretation" eyebrow label `renderAssessment()` uses for the
+real thing — same slot, same label, so it reads as "this is where that
+goes, not filled in yet" rather than a generic notice. Body text names
+the concrete thing being deferred ("...including any hematologic-
+malignancy reference flag") rather than a vague "click Parse." Called
+right after content is loaded into the textarea in both the PDF handler
+(after the lab-interpretation panel, so it appears directly below it)
+and the `.txt` handler (guarded on the file having at least one non-
+blank line). `runParse()` already fully clears and rebuilds `resultsEl`
+on completion, so the placeholder is naturally replaced by the real
+panel with no extra logic needed — verified live: exactly one
+`.assessment-panel` and zero `.pending-parse` elements remain after
+clicking Parse.
+
+No backend changes; no new backend tests (frontend-only, consistent with
+tasks 13/18's OCR-prefix and auto-parse fixes). Verified live end-to-end
+in the browser for both upload paths.
+
 ### 19. CI workflow to run the test suite on every push/PR
 
 **Context**: User noticed the "CI" section on a GitHub PR showed nothing

@@ -103,6 +103,9 @@ fileInput.addEventListener('change', () => {
   reader.onload = () => {
     input.value = reader.result;
     showUploadStatus(`Loaded "${file.name}" — review before parsing.`);
+    if (reader.result.split('\n').some(l => l.trim())) {
+      renderPendingParsePlaceholder(resultsEl);
+    }
   };
   reader.onerror = () => {
     showUploadStatus(`Could not read "${file.name}": ${reader.error}.`, true);
@@ -112,6 +115,33 @@ fileInput.addEventListener('change', () => {
   // Reset so choosing the same file again still fires 'change'.
   fileInput.value = '';
 });
+
+// Shown in the results area -- the same spot renderAssessment() fills in
+// after Parse runs, using the same "This tool's interpretation" eyebrow
+// label -- whenever content has just been loaded but not yet parsed
+// (.txt or PDF upload; both require an explicit Parse click, see the
+// comments above those handlers). Without this, a PDF upload in
+// particular can look complete once the lab-reported interpretation
+// panel renders: something visibly appeared in the results area, so
+// there's no obvious cue that this tool's own interpretation --
+// including whether anything matched the hematologic-malignancy
+// reference table -- hasn't been generated yet.
+function renderPendingParsePlaceholder(container) {
+  const panel = document.createElement('div');
+  panel.className = 'assessment-panel pending-parse';
+
+  const label = document.createElement('p');
+  label.className = 'eyebrow assessment-label';
+  label.textContent = "This tool's interpretation";
+  panel.appendChild(label);
+
+  const body = document.createElement('p');
+  body.className = 'placeholder';
+  body.innerHTML = 'Not generated yet — click <strong>Parse</strong> above to check the loaded string(s), including any hematologic-malignancy reference flag.';
+  panel.appendChild(body);
+
+  container.appendChild(panel);
+}
 
 function showUploadStatus(message, isError = false) {
   uploadStatus.textContent = message;
@@ -211,6 +241,7 @@ pdfFileInput.addEventListener('change', async () => {
     }
 
     input.value = data.candidates.map(c => c.text).join('\n');
+    renderPendingParsePlaceholder(resultsEl);
 
     const ocrCandidates = data.candidates.filter(c => c.source === 'ocr');
     const textCount = data.candidates.length - ocrCandidates.length;
