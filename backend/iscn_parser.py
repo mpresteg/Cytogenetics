@@ -501,13 +501,23 @@ _LOCUS_SUFFIX_RE = re.compile(r'\(([^()]*)\)$')
 # What's left after stripping result/locus must look like a probe/gene name,
 # optionally a "A con B" / "A amp B" pair.
 _PROBE_NAME_RE = re.compile(r'^[A-Za-z0-9\-]+(?:\s(?:con|amp)\s[A-Za-z0-9\-]+)?$')
+# A parenthesized probe list, optionally preceded by a band-locus at the top
+# level (not inside any parens) -- task 15's "1p32(CDKN2Cx2)" form. The
+# locus group matches "" (not None) when absent, e.g. a bare "(D13S319x1)".
+_GROUP_WITH_LOCUS_RE = re.compile(r'([^(),]*)\(([^()]*)\)')
 
 
-def interpret_fish_token(token: str) -> Finding:
+def interpret_fish_token(token: str, prefix_locus: Optional[str] = None) -> Finding:
     # Parse right-to-left: strip an optional result suffix, then an optional
     # locus in parens, and whatever remains must be a valid probe name. This
     # avoids the greedy-regex trap where a probe name like 'D21S259' would
     # otherwise swallow a trailing 'x3' result into its own name.
+    #
+    # `prefix_locus` (task 15) covers a different, also-real locus form:
+    # "1p32(CDKN2Cx2),13q34(LAMP1x2)" -- a band-locus written *before* each
+    # probe's own parens, at the caller's (parse_fish_only_clone's) level,
+    # not inside this token at all. Only used when the token has no locus
+    # of its own (the suffix form above), so the two never conflict.
     remainder = token
     result = None
     m = _RESULT_SUFFIX_RE.search(remainder)
@@ -519,6 +529,8 @@ def interpret_fish_token(token: str) -> Finding:
     if m:
         locus = m.group(1)
         remainder = remainder[:m.start()]
+    elif prefix_locus:
+        locus = prefix_locus
     probes = remainder.strip()
     if not probes or not _PROBE_NAME_RE.match(probes):
         return Finding(raw=token, category="unrecognized", interpretation="",
@@ -554,7 +566,8 @@ def interpret_fish_token(token: str) -> Finding:
     if knowledge_note:
         text += f" | Reference note (not diagnostic): {knowledge_note}"
     return Finding(raw=token, category="fish", abbreviation=probes,
-                    interpretation=text, warnings=warnings)
+                    interpretation=text, warnings=warnings,
+                    bands=[locus] if locus else [])
 
 
 def parse_fish_only_clone(raw: str) -> CloneResult:
@@ -590,12 +603,19 @@ def parse_fish_only_clone(raw: str) -> CloneResult:
             findings.append(interpret_fish_token(p))
     else:
         # Case 2: parenthesized probe list(s): (probe1,probe2)(probe1,probe2)...
-        groups = re.findall(r'\(([^()]*)\)', body)
-        if not groups:
+        # each optionally preceded by its own band-locus, e.g.
+        # "1p32(CDKN2Cx2),13q34(LAMP1x2)" -- a common way labs report a
+        # multi-locus interphase FISH panel. Capturing the locus text
+        # alongside its group (task 15), not just the parenthesized part,
+        # so it isn't silently dropped; a locus covers every probe in that
+        # same group when more than one shares it, e.g. "1p32(A,B)".
+        matches = list(_GROUP_WITH_LOCUS_RE.finditer(body))
+        if not matches:
             errors.append(f"Could not find any probe list in '{raw}'.")
-        for g in groups:
+        for locus_text, g in (m.groups() for m in matches):
+            locus_text = locus_text.strip() or None
             for p in split_top_level(g):
-                findings.append(interpret_fish_token(p))
+                findings.append(interpret_fish_token(p, prefix_locus=locus_text))
 
     return CloneResult(raw=raw, modal_number=None, modal_number_raw=None,
                         sex_chromosomes=None, cell_count=cell_count,

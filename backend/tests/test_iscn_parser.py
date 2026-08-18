@@ -261,6 +261,44 @@ class TestFish(unittest.TestCase):
         self.assertEqual(clone["cell_count"], 200)
         self.assertEqual(len(clone["findings"]), 1)
 
+    def test_band_locus_prefix_captured_per_probe(self):
+        # task 15: "1p32(CDKN2Cx2),13q34(LAMP1x2)" -- a band-locus prefix
+        # written before each probe's own parens, a common way labs report
+        # a multi-locus interphase FISH panel. Previously silently
+        # dropped entirely; neither probe has a PROBE_KNOWLEDGE entry, so
+        # there's no other source these band strings could come from.
+        r = parse_iscn("nuc ish 1p32(CDKN2Cx2),13q34(LAMP1x2)")
+        clone = r["clones"][0]
+        self.assertEqual(len(clone["findings"]), 2)
+        cdkn2c, lamp1 = clone["findings"]
+        self.assertIn("CDKN2C", cdkn2c["abbreviation"])
+        self.assertIn("locus 1p32", cdkn2c["interpretation"])
+        self.assertEqual(cdkn2c["bands"], ["1p32"])
+        self.assertIn("LAMP1", lamp1["abbreviation"])
+        self.assertIn("locus 13q34", lamp1["interpretation"])
+        self.assertEqual(lamp1["bands"], ["13q34"])
+        # Not cross-attributed to the wrong probe.
+        self.assertNotIn("13q34", cdkn2c["interpretation"])
+        self.assertNotIn("1p32", lamp1["interpretation"])
+
+    def test_band_locus_shared_across_probes_in_one_group(self):
+        # A single locus can cover more than one probe sharing its parens,
+        # e.g. "1p32(CDKN2Cx2,OTHERx1)" -- both probes get that locus.
+        r = parse_iscn("nuc ish 1p32(CDKN2Cx2,OTHERx1)")
+        clone = r["clones"][0]
+        self.assertEqual(len(clone["findings"]), 2)
+        self.assertTrue(all(f["bands"] == ["1p32"] for f in clone["findings"]))
+
+    def test_no_band_locus_prefix_still_works(self):
+        # Regression: the pre-existing simple form with no locus prefix at
+        # all must be unaffected -- no locus text invented, bands stays empty.
+        r = parse_iscn("nuc ish(D13S319x1,LAMP1x2)")
+        clone = r["clones"][0]
+        self.assertEqual(len(clone["findings"]), 2)
+        for f in clone["findings"]:
+            self.assertEqual(f["bands"], [])
+            self.assertNotIn("locus", f["interpretation"])
+
 
 class TestCombinedKaryotypeFish(unittest.TestCase):
     """ISCN's '<karyotype>[N].nuc ish ...[M]' form: a period joining a
@@ -324,12 +362,17 @@ class TestCombinedKaryotypeFish(unittest.TestCase):
         self.assertTrue(all(f["category"] == "fish" for f in clone["findings"]))
         # IGH already has a PROBE_KNOWLEDGE entry, so it should carry its
         # reference note. (TP53 doesn't yet -- that's task 3, unrelated to
-        # this fix. Note also: the "1p32"/"17p13.1"-style band-locus prefix
-        # written before each probe's own parens in this list-of-loci form
-        # isn't captured anywhere in the output -- a separate, pre-existing
-        # gap this test surfaced but doesn't fix; see TASKS.md.)
+        # this fix.)
         joined = " ".join(f["interpretation"] for f in clone["findings"])
         self.assertIn("14q32", joined)
+        # task 15: every probe's band-locus prefix (written before its own
+        # parens in this list-of-loci form, e.g. "1p32(CDKN2Cx2)") is now
+        # captured too, not just IGH's coincidental knowledge-note text
+        # above -- check one with no PROBE_KNOWLEDGE entry of its own, so
+        # the locus can only be coming from the input string itself.
+        cdkn2c = next(f for f in clone["findings"] if "CDKN2C" in f["abbreviation"])
+        self.assertEqual(cdkn2c["bands"], ["1p32"])
+        self.assertIn("locus 1p32", cdkn2c["interpretation"])
 
     def test_regular_ish_attached_form_still_works(self):
         # Regression: the pre-existing "ish" attached mid-comma-list form

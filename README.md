@@ -163,11 +163,18 @@ first to see the raw response shape.
   follicular lymphoma). Every such note is explicitly labeled "reference
   note, not diagnostic" in the output — this is a starting scaffold, not a
   validated knowledge base.
-- **Known gap:** in a multi-probe list written as `locus(PROBE),locus(PROBE),...`
-  (e.g. `1p32(CDKN2Cx2),13q34(LAMP1x2)`), the leading band-locus text
-  (`1p32`, `13q34`) isn't captured anywhere in the output — only what's
-  inside each probe's own parens. Pre-existing, not introduced by the
-  combined-clone work above; flagged, not yet fixed.
+- **Band-locus prefix**, in a multi-probe list written as
+  `locus(PROBE),locus(PROBE),...` (e.g. `1p32(CDKN2Cx2),13q34(LAMP1x2)`,
+  a common way labs report a multi-locus interphase FISH panel): the
+  leading band-locus text (`1p32`, `13q34`) is captured against its own
+  probe (task 15) — surfaced in that probe's `interpretation` (e.g.
+  "Probe CDKN2C (locus 1p32): ...") and in a new `bands` field on its
+  `Finding`, the same field structural findings (`del()`/`dup()`/etc.)
+  already use for breakpoint bands. A locus shared by more than one
+  probe inside the same parens (`1p32(CDKN2Cx2,OTHERx1)`) applies to
+  both. `interpret_fish_token()` already had a *different* locus form —
+  written as a suffix *inside* an individual probe's own trailing parens
+  — that form takes precedence if a token somehow has both.
 
 **ISCN edition awareness (scaffold):** the API and UI accept an `edition`
 parameter (2016 / 2020 / 2024, default 2024). This does **not** fully model
@@ -340,7 +347,7 @@ installed.
 Three modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 88 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 91 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)
@@ -385,7 +392,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-94 tests total, all passing as of this build — I ran them in the sandbox
+97 tests total, all passing as of this build — I ran them in the sandbox
 this was built in, they're not just claimed to pass.
 
 ## Working on this repo
