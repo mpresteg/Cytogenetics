@@ -25,6 +25,39 @@ at the bottom of `## Backlog` following the same three-field format.
    feature.
 5. Commit with a message that names the task.
 
+## Git / PR workflow
+
+- **Docs-only edits** (`TASKS.md` and/or `README.md`, no code touched) —
+  commit straight to `main`, no branch, no PR. Nothing functional is at
+  risk, so the overhead of a PR doesn't pay for itself.
+- **Anything touching code** (`backend/`, `.github/workflows/`, etc.) —
+  create a branch, open a PR, and **wait for an explicit instruction to
+  merge it** before merging — even if CI is green. CI passing only means
+  the tests that already exist still pass; it doesn't catch design or
+  criteria problems, which in this repo's history have repeatedly turned
+  up in review rather than in a test run (e.g. the OCR-prefix marker that
+  silently broke parsing, the `COMMENT`-as-terminator logic that dropped
+  real content, an incomplete test fixture). There's no auto-merge policy
+  layered on top of this — since docs-only changes already skip the PR
+  step entirely, every PR that exists is by definition a real code
+  change, so "manual review before merge" already covers 100% of PRs by
+  construction, not as a separate rule bolted on top.
+- After a PR is merged, delete the branch (`gh pr merge --squash
+  --delete-branch` does both in one step). Stale branches left around
+  after merging accumulate as clutter with no unmerged content behind
+  them — periodically confirmed and cleaned up (all merged PRs' branches
+  were pruned as of task 19).
+- `main` has branch protection: PRs can't merge unless the `test` GitHub
+  Actions check (`.github/workflows/tests.yml`, task 19) passes.
+  Direct pushes to `main` (the docs-only case above) are **not** blocked
+  by this — required-status-checks only gate PR merges, not direct
+  pushes, and `enforce_admins` is off.
+- If CI fails on a PR, diagnose the actual root cause and push a real
+  fix, then report what broke and what changed — don't just adjust an
+  assertion until the check goes green without understanding why it
+  failed. (Precedent: task 19's CI run caught a genuine cross-environment
+  OCR/font bug this way, not something to paper over.)
+
 ---
 
 ## Backlog
