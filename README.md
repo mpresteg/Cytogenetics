@@ -23,15 +23,23 @@ is easy to read, test, and extend.
 ## Project layout
 
 ```
-iscn-tool/
+Cytogenetics/
+  .github/workflows/
+    tests.yml            CI: runs the backend test suite on every push/PR
+  TASKS.md                Backlog of self-contained tasks (see "Working on this repo")
   backend/
-    main.py            FastAPI app: /api/parse, /api/examples, serves the frontend
-    iscn_parser.py      All parsing/validation/interpretation logic (no framework deps)
+    main.py                FastAPI app: /api/parse, /api/extract-pdf, /api/editions,
+                            /api/examples, serves the frontend
+    iscn_parser.py          All parsing/validation/interpretation logic (no framework deps)
     requirements.txt
     static/
       index.html
       style.css
       app.js
+    tests/
+      test_iscn_parser.py
+      test_pdf_extraction.py
+      test_ocr_extraction.py
 ```
 
 ## Visual design
@@ -92,16 +100,14 @@ different frontend later) are at **http://127.0.0.1:8000/docs**.
 
 ## A note on testing
 
-I unit-tested `iscn_parser.py` directly (pure Python, no dependencies) against
-~15 real ISCN strings covering numerical, structural, mosaic, and FISH cases,
-and fixed one regex bug that surfaced (isochromosome band parsing). I was
-**not able to actually launch the FastAPI server** in the sandbox this was
-built in (no network access to install FastAPI/uvicorn), so the HTTP layer —
-`main.py` and the frontend's `fetch()` calls — is unverified end-to-end,
-though it follows a very standard, low-risk pattern. When you run it locally,
-if anything doesn't wire up, the most likely culprits are the JSON shape
-returned by `/api/parse` vs. what `app.js` expects — check the `/docs` page
-first to see the raw response shape.
+`iscn_parser.py`'s logic is covered by the automated suite described below
+(97 tests, run on every push/PR by CI). Beyond that, every feature in this
+tool has also been verified live — the actual FastAPI server launched, the
+actual UI driven in a browser, against both synthetic fixtures and real
+(de-identified) lab report PDFs — not just unit-tested in isolation. If
+something doesn't wire up when you run it locally, the `/docs` page is the
+fastest way to check the raw JSON shape `/api/parse` and `/api/extract-pdf`
+actually return, versus what `app.js` expects.
 
 ## What this prototype covers
 
@@ -150,11 +156,7 @@ first to see the raw response shape.
   `13q14.3`, since that's always followed by more digits, never the word
   "ish") and merging the two halves into one clone: the karyotype's own
   `cell_count` plus a separate `fish_cell_count` for the FISH clause's
-  count, and findings from both concatenated. Before this, the whole
-  string went through the plain karyotype parser, which has no notion of
-  a trailing FISH clause — everything from `nuc ish` onward silently
-  corrupted `sex_chromosomes` and every individual probe came back
-  "unrecognized."
+  count, and findings from both concatenated.
 - Probe results: presence/absence (`ABL1+`, `BCR-`), copy number (`D21S259x3`),
   fusion (`ABL1 con BCR`)
 - **Reference notes:** a small, non-exhaustive lookup table (`PROBE_KNOWLEDGE`,
@@ -163,18 +165,14 @@ first to see the raw response shape.
   follicular lymphoma). Every such note is explicitly labeled "reference
   note, not diagnostic" in the output — this is a starting scaffold, not a
   validated knowledge base.
-- **Band-locus prefix**, in a multi-probe list written as
+- **Band-locus prefix:** in a multi-probe list written as
   `locus(PROBE),locus(PROBE),...` (e.g. `1p32(CDKN2Cx2),13q34(LAMP1x2)`,
-  a common way labs report a multi-locus interphase FISH panel): the
-  leading band-locus text (`1p32`, `13q34`) is captured against its own
-  probe (task 15) — surfaced in that probe's `interpretation` (e.g.
-  "Probe CDKN2C (locus 1p32): ...") and in a new `bands` field on its
-  `Finding`, the same field structural findings (`del()`/`dup()`/etc.)
-  already use for breakpoint bands. A locus shared by more than one
-  probe inside the same parens (`1p32(CDKN2Cx2,OTHERx1)`) applies to
-  both. `interpret_fish_token()` already had a *different* locus form —
-  written as a suffix *inside* an individual probe's own trailing parens
-  — that form takes precedence if a token somehow has both.
+  a common way labs report a multi-locus interphase FISH panel), the
+  leading band-locus text is captured against its own probe — surfaced in
+  that probe's `interpretation` ("Probe CDKN2C (locus 1p32): ...") and in
+  a `bands` field on its `Finding`, the same field structural findings
+  use for breakpoint bands. A locus shared by more than one probe inside
+  the same parens (`1p32(CDKN2Cx2,OTHERx1)`) applies to both.
 
 **ISCN edition awareness (scaffold):** the API and UI accept an `edition`
 parameter (2016 / 2020 / 2024, default 2024). This does **not** fully model
@@ -197,34 +195,29 @@ at "one ISCN string in, one result out," which is easier to reason about and
 test than adding a second, list-shaped API contract to maintain.
 
 Before splitting on `\n`, `runParse()` first runs `foldLineWrappedEntries()`
-(task 14) to fold back together a *single* ISCN string that's been
-copy-pasted from a source that word-wrapped it across several physical
-lines (a PDF viewer, a Word doc, some EMR "copy" buttons) — the same
-structural signal (`lineNeedsContinuation()`/`continuationSeparator()`)
-`iscn_parser.py`'s PDF-text-extraction path already uses server-side
-(task 16): a line can't legally have ended where it did if it has an
-unclosed `(`, a trailing list comma, or ends in "ish" — never a guess
-about what two lines' content means, so genuinely separate batch entries
-are never at risk of a false merge, only ever a line that looks
-structurally incomplete on its own. A blank line always breaks folding
-(a batch-mode-only addition over the server-side version, since a
-user's own paste can have intentional blank-line separators a PDF's
-extracted text doesn't); capped the same way, so a genuine unclosed-
-paren typo can't silently swallow every following entry. Some wraps
-(landing right where a paren pair happens to already be balanced) are
-structurally indistinguishable from an intentional new entry and are
-deliberately left unfixed rather than guessed at.
+to fold back together a *single* ISCN string that's been copy-pasted from
+a source that word-wrapped it across several physical lines (a PDF
+viewer, a Word doc, some EMR "copy" buttons) — a structural signal, not a
+content guess: a line can't legally have ended where it did if it has an
+unclosed `(`, a trailing list comma, or ends in "ish," so genuinely
+separate batch entries are never at risk of a false merge, only ever a
+line that looks structurally incomplete on its own. A blank line always
+breaks folding, since a user's own paste can have intentional blank-line
+separators; capped so a genuine unclosed-paren typo can't silently
+swallow every following entry. Some wraps (landing right where a paren
+pair happens to already be balanced) are structurally indistinguishable
+from an intentional new entry and are deliberately left unfixed rather
+than guessed at.
 
 An "Upload .txt file…" button next to the textarea reads a local
 plain-text file client-side via `FileReader` (one ISCN string per line —
 same shape the textarea expects) and drops its contents into the
 textarea — no upload to the backend, nothing persisted. Does **not**
-auto-run parse (task 18) — even though this content is read verbatim
-rather than extracted/guessed at, it still hasn't been seen *inside this
-tool* yet, same as a PDF upload, so it gets the same explicit-Parse-click
-treatment as paste and PDF upload rather than the example dropdown's
-"selecting it is the action" treatment. CSV/XLSX and other formats
-needing column-mapping are out of scope; see task 7 in `TASKS.md`.
+auto-run parse: that content hasn't been seen *inside this tool* yet,
+same as a PDF upload, so it gets the same explicit-Parse-click treatment
+as paste and PDF upload, rather than the example dropdown's "selecting
+it is the action" treatment. CSV/XLSX and other formats needing
+column-mapping are out of scope; see task 7 in `TASKS.md`.
 
 **PDF lab report upload:** an "Upload PDF report…" button sends the file
 to a new `POST /api/extract-pdf` endpoint — this one **can't** be
@@ -257,44 +250,34 @@ never decorated with markers of our own. OCR-sourced candidates need
 materially higher error rate on dense, punctuation-heavy ISCN strings;
 that caution is surfaced in a separate panel below the upload status
 (listing each OCR-derived line, with a "verify against the original"
-note), not by mutating what's in the textarea. An earlier version
-prefixed OCR-sourced lines with `# OCR — verify against original:`
-directly in the textarea so an unedited line would fail to parse — but
-that meant the caution couldn't be separated from the content itself: a
-user who'd already reviewed and confirmed a line was correct still had
-to manually strip the prefix before it would parse at all. A report with
-zero candidates says so plainly rather than leaving a blank textarea
-that reads as "nothing to report." Extracting anything beyond the
-karyotype string itself (patient name, specimen ID, etc.) is out of
-scope, as is "correcting" likely OCR misreads against ISCN grammar — a
-misread character surfaces through the existing error/warning UI as-is,
-never silently patched; see tasks 8 and 11 in `TASKS.md`.
+note), not by mutating what's in the textarea. A report with zero
+candidates says so plainly rather than leaving a blank textarea that
+reads as "nothing to report." Extracting anything beyond the karyotype
+string itself (patient name, specimen ID, etc.) is out of scope, as is
+"correcting" likely OCR misreads against ISCN grammar — a misread
+character surfaces through the existing error/warning UI as-is, never
+silently patched.
 
-`find_candidate_iscn_lines()` also handles a real-world wrinkle,
-confirmed against an actual lab report PDF: some report-generation
-software hard-wraps a long ISCN string across several physical lines
-*within the PDF's own text layer* (nothing to do with OCR — this happens
-even when the page has a full, real text layer). Rather than grabbing
-only the first fragment, it recognizes when a candidate can't have
-legally ended where a physical line did (an unclosed `(`, a trailing
-`,`, or ending in the word `ish`, which ISCN grammar always follows with
-more content) and folds subsequent lines in — joined with no separator
-by default (most wraps land mid-token) except right after `ish`, which
-grammar guarantees a following space — capped
+`find_candidate_iscn_lines()` also handles a real-world wrinkle: some
+report-generation software hard-wraps a long ISCN string across several
+physical lines *within the PDF's own text layer* (nothing to do with
+OCR — this happens even on a page with a full, real text layer). Rather
+than grabbing only the first fragment, it recognizes when a candidate
+can't have legally ended where a physical line did (an unclosed `(`, a
+trailing `,`, or ending in the word `ish`, which ISCN grammar always
+follows with more content) and folds subsequent lines in — joined with
+no separator by default (most wraps land mid-token) except right after
+`ish`, which grammar guarantees a following space — capped
 (`MAX_CANDIDATE_CONTINUATION_LINES`) so it can never run away across an
-entire document. See task 16 in `TASKS.md`.
-
-That cap alone wasn't enough for OCR-sourced text (task 11): confirmed
-against real OCR output from an actual scanned report, a single misread
-character (Tesseract dropping one closing `)`) can leave the
-unbalanced-parens signal permanently true, so folding never resolves on
-its own and runs all the way to the line cap — pulling unrelated report
-sections (e.g. a "CULTURES" header and a disclaimer footer) into one
-long garbled candidate. `_looks_like_section_boundary()` is a second,
-independent stop condition: a standalone all-uppercase, digit-free line
-is specific enough to never collide with real ISCN content (which always
-mixes in numbers), so folding stops cleanly before a section header no
-matter what the paren-balance signal says. See task 17 in `TASKS.md`.
+entire document. A second, independent stop condition
+(`_looks_like_section_boundary()`) halts folding before a standalone
+all-uppercase, digit-free line (a real report-section header, e.g.
+"CULTURES") regardless of what the paren-balance signal says — real
+ISCN content always mixes in numbers, so this is specific enough to
+never collide with it, and guards against a single OCR-garbled
+character permanently corrupting the paren-balance check and folding
+the candidate all the way to the line cap through unrelated report
+sections.
 
 **Case-level clinical assessment:** every parse also returns a top-level
 `assessment` (`assess_case()` in `iscn_parser.py`) that rolls the case's
@@ -313,37 +296,34 @@ from an acquired one, since that needs clinical context (specimen type,
 patient history) this tool doesn't have.
 
 **Comparing against the lab's own interpretation:** when a PDF upload
-(task 8) has a section introduced by "Interpretation," "Overall
-Interpretation," "Clinical Interpretation," or "Clinical Correlation" —
-either as its own header line, or inline with the text on the same line
-("Interpretation: Normal karyotype...", a real second report's
-convention — an explicit colon is required for the inline form, so
-ordinary prose starting with "Interpretation" doesn't false-trigger)
-(`find_lab_interpretation()` in `iscn_parser.py`) — that text is
-extracted and shown at the top of the results, labeled "Lab-reported
-interpretation," **immediately once the PDF is read** (task 18) — not
-gated behind clicking Parse. It comes straight from the PDF's own text,
-independent of which candidate lines get parsed or whether the user
-parses at all, so there's no reason to hide it until Parse runs; Parse
-re-renders the same panel afterward alongside this tool's own
-case-level assessment, which now always carries an explicit "This
-tool's interpretation" label, so the two voices are never conflated.
-Neither is auto-compared or scored; a human reads both.
+has a section introduced by "Interpretation," "Overall Interpretation,"
+"Clinical Interpretation," or "Clinical Correlation" — either as its own
+header line, or inline with the text on the same line ("Interpretation:
+Normal karyotype...", a convention some labs use — an explicit colon is
+required for the inline form, so ordinary prose starting with
+"Interpretation" doesn't false-trigger) (`find_lab_interpretation()` in
+`iscn_parser.py`) — that text is extracted and shown at the top of the
+results, labeled "Lab-reported interpretation," **immediately once the
+PDF is read**, not gated behind clicking Parse. It comes straight from
+the PDF's own text, independent of which candidate lines get parsed or
+whether the user parses at all. Parse re-renders the same panel
+afterward alongside this tool's own case-level assessment, which always
+carries an explicit "This tool's interpretation" label, so the two
+voices are never conflated. Neither is auto-compared or scored; a human
+reads both.
 
 "Comment" is **not** a trigger header (starting the section), but *is*
-now included as regular content once an interpretation section has
-started — it stopped extraction early in an earlier version, on the
-reasoning that one real report's "Comment" section was generic FDA/CLIA
-disclaimer boilerplate. That didn't generalize: a second real report's
-"Comment" turned out to be a genuine, case-specific caveat sitting right
-next to a named reviewer. Guessing which convention a given PDF follows
-isn't reliable, and dropping real content is worse than occasionally
-showing boilerplate a human can plainly see and ignore — so extraction
-is deliberately inclusive here, stopping only at a handful of other real
-section names ("Signature," "Results," "Cultures," "Karyotypes," "FISH
-Images," "CPT Codes") that mark a genuine structural boundary. If no
-interpretation section is found, that's stated plainly rather than a
-blank space that reads as "nothing to report."
+included as regular content once an interpretation section has started.
+Different labs use "Comment" differently — sometimes generic FDA/CLIA
+disclaimer boilerplate, sometimes a genuine case-specific caveat sitting
+right next to a named reviewer — and guessing which convention a given
+PDF follows isn't reliable. Dropping real content is worse than
+occasionally showing boilerplate a human can plainly see and ignore, so
+extraction is deliberately inclusive here, stopping only at a handful of
+other real section names ("Signature," "Results," "Cultures,"
+"Karyotypes," "FISH Images," "CPT Codes") that mark a genuine structural
+boundary. If no interpretation section is found, that's stated plainly
+rather than a blank space that reads as "nothing to report."
 
 Anything outside all of the above grammar is returned as
 `category: "unrecognized"` with an explicit warning — it's never silently
@@ -355,13 +335,12 @@ confidence is worse than an honest "I don't understand this token."
 A GitHub Actions workflow (`.github/workflows/tests.yml`) runs the full
 suite below — including the OCR tests, via `apt-get install tesseract-
 ocr fonts-dejavu-core` steps — on every push to `main` and every pull
-request (task 19). The font install matters, not just Tesseract itself:
-this workflow's first real run caught PIL's own bundled default font
-rendering a "4" that real Tesseract misreads as "A" (confirmed on two
-different Tesseract builds) — `test_ocr_extraction.py` now renders its
-fixture text with a real system font when one's available (DejaVu on
-Linux, Arial on macOS), falling back to PIL's default only if neither is
-installed.
+request. The font install matters, not just Tesseract itself: real
+Tesseract can misread digits rendered in PIL's own bundled default font
+(a "4" read as "A," confirmed across Tesseract builds) —
+`test_ocr_extraction.py` renders its fixture text with a real system
+font when one's available (DejaVu on Linux, Arial on macOS), falling
+back to PIL's default only if neither is installed.
 
 Three modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
@@ -383,16 +362,15 @@ pytest-discoverable if that's your preferred runner:
   lab-reported-interpretation extraction heuristic
   (`find_lab_interpretation()`).
 - `test_pdf_extraction.py` — 3 tests, depends on `pypdf` (a real
-  application dependency as of task 8, not a test-only addition).
-  Builds small PDFs entirely in-code (raw PDF syntax, no external
-  PDF-authoring library or binary fixture files) and runs them through
-  the same extract-then-detect pipeline `/api/extract-pdf` uses: one
-  clean single-karyotype report, one with two karyotype lines, one with
-  none.
+  application dependency, not a test-only addition). Builds small PDFs
+  entirely in-code (raw PDF syntax, no external PDF-authoring library or
+  binary fixture files) and runs them through the same extract-then-detect
+  pipeline `/api/extract-pdf` uses: one clean single-karyotype report, one
+  with two karyotype lines, one with none.
 - `test_ocr_extraction.py` — 3 tests, depends on `pytesseract`/`Pillow`
-  *and* a real local Tesseract install (task 11) — there's no mocked
-  fallback for "Tesseract isn't installed" here, since without it there's
-  nothing to test. Builds a small image-only PDF (a PIL-rendered bitmap
+  *and* a real local Tesseract install — there's no mocked fallback for
+  "Tesseract isn't installed" here, since without it there's nothing to
+  test. Builds a small image-only PDF (a PIL-rendered bitmap
   embedded as a JPEG XObject, no text operators at all) and confirms the
   OCR path recovers the karyotype string from it, a scanned report with
   no karyotype content returns no candidates, and — the routing decision
@@ -411,8 +389,8 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-97 tests total, all passing as of this build — I ran them in the sandbox
-this was built in, they're not just claimed to pass.
+97 tests total, all passing — verified locally and independently by CI
+on every push, not just claimed to pass.
 
 ## Working on this repo
 
