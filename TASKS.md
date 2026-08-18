@@ -196,6 +196,14 @@ as blocked/under-review, not "resolved" preemptively.
 
 ---
 
+---
+
+## In progress
+
+*(none)*
+
+## Done
+
 ### 14. Batch mode breaks on ISCN strings with embedded line-wraps
 
 **Context**: `runParse()` in `app.js` splits pasted text on every `\n`
@@ -241,13 +249,47 @@ stronger assumption to bend than PDF-text scanning's "no per-line
 contract at all," so re-validate the false-merge risk in that context
 before reusing it as-is.
 
----
+Done: ported as `foldLineWrappedEntries()` / `lineNeedsContinuation()` /
+`continuationSeparator()` in `app.js`, run as a pre-pass in `runParse()`
+before the existing per-line loop. Same three structural signals as the
+Python original (unclosed `(`, trailing list comma, ends in "ish"),
+same `MAX_LINE_WRAP_CONTINUATIONS` (15) cap against a genuine unclosed-
+paren typo silently swallowing every subsequent entry. Only ever folds a
+line into the *immediately preceding* entry when that entry itself looks
+structurally incomplete — never merges two lines that both look complete
+on their own — so the false-merge risk the task called out for batch
+mode's stronger "one line = one entry" contract doesn't apply: this
+never guesses that two complete-looking entries belong together, only
+that an incomplete-looking one continues.
 
-## In progress
+One addition beyond the ported logic: a blank line always breaks
+folding, even if the preceding entry still looks structurally
+incomplete — there's no legitimate reason a real line wrap would land on
+a blank line, so this is a free, unambiguous extra safety margin the PDF
+version didn't need (PDF-extracted text doesn't have user-intentional
+blank-line separators the way a batch paste can). Caught a real bug in
+this exact piece during manual testing: the first implementation reset
+the continuation *counter* on a blank line but didn't actually block the
+fold itself, so it silently folded across the blank line anyway —
+fixed with an explicit `blockedByBlankLine` flag, re-verified after the
+fix.
 
-*(none)*
+Confirmed the task's own predicted limitation still holds and is
+correctly *not* "fixed": a wrap landing right after a complete
+`t(9;22)` pair (balanced parens at that point) is structurally
+indistinguishable from an intentional new entry, so it's left as two
+separate (one broken, one garbage) entries — exactly the acknowledged
+tradeoff, not a regression.
 
-## Done
+No backend changes; no new backend tests (frontend-only, consistent
+with tasks 18/20/21). Verified live in the browser: the real 6-line
+hard-wrapped FISH panel string (same one used in task 16's regression
+test) now parses as one clean entry with all 15 probes and their loci
+(task 15) correctly recognized; a mixed paste (a mid-comma-wrapped
+`nuc ish(...)` entry alongside separate simple entries) folds only the
+wrapped one, leaving the others untouched (`Input 1 of 4` .. `Input 4 of
+4`, each independently correct); the blank-line-breaks-folding and
+15-line-cap cases confirmed directly via the console.
 
 ### 15. Capture band-locus prefix in multi-probe nuc ish lists
 
