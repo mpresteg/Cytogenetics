@@ -57,6 +57,20 @@ at the bottom of `## Backlog` following the same three-field format.
   assertion until the check goes green without understanding why it
   failed. (Precedent: task 19's CI run caught a genuine cross-environment
   OCR/font bug this way, not something to paper over.)
+- After merging, only re-run the full test suite locally on `main` if the
+  merge wasn't a clean fast-forward (i.e. it needed conflict resolution
+  or a rebase, producing a genuinely new combination of code nothing has
+  tested yet). A clean fast-forward merge's content is byte-identical to
+  what was already tested locally *and* independently by CI — a third
+  full run on identical content isn't new verification, just ceremony.
+  Confirm via `git log`/`git status` that the expected commit landed
+  instead.
+- Write-up depth in a task's "Done" resolution should scale with how
+  subtle or risky the change was — full Context/Done-when/resolution
+  detail (with root-cause explanation, what was tried, what the
+  verification actually checked) for anything non-obvious or bug-fix-y;
+  a few sentences suffice for small, low-risk, self-evident changes. Not
+  every task needs the same depth just for consistency's sake.
 
 ---
 
