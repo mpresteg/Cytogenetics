@@ -960,6 +960,41 @@ def _continuation_separator(candidate: str) -> str:
     return ""
 
 
+_CLOSING_BRACKET_RE = re.compile(r'\]')
+
+
+def _trim_trailing_garbage(candidate: str) -> str:
+    """Truncates `candidate` right after the first "[N]" cell count whose
+    following content (ignoring whitespace) isn't a legal continuation —
+    another clone ("/"), a combined karyotype+FISH clause ("."), or the
+    end of the string. Never invents or alters any character of the
+    candidate itself; only narrows where it ends.
+
+    Confirmed against a real report (Diagnostic Cytogenetics
+    Incorporated's template): its whole text layer emits "value"
+    immediately followed by "Label:" with no separator throughout the
+    document ("XX-XXXXCust. Specimen ID:", "11/08/2016Collection
+    Date:", etc.) — a real, reproducible pypdf text-extraction ordering
+    quirk in that software's PDF output, not something to guess at
+    generally. It collides badly when it lands on the karyotype line
+    itself: the section's own label glued directly onto a real, valid
+    karyotype string with zero separator, all one physical line, so the
+    naive "grab to end of line" rule (CANDIDATE_LINE_RE below) can't
+    tell where the real content ends. ISCN grammar can: nothing legal
+    follows a closed "[N]" except "/", ".", or end of string.
+
+    Deliberately narrower than "trim any trailing prose caught on the
+    line" (out of scope — see test_captures_rest_of_line_without_
+    correction) — this only fires on that one specific, grammar-
+    grounded signal, the same "structural signal, not a content guess"
+    discipline the continuation-folding logic above already follows."""
+    for m in _CLOSING_BRACKET_RE.finditer(candidate):
+        rest = candidate[m.end():].lstrip()
+        if rest and rest[0] not in '/.':
+            return candidate[:m.end()]
+    return candidate
+
+
 def _looks_like_section_boundary(line: str) -> bool:
     """True if `line` looks like a standalone report section header
     (e.g. "CULTURES", "COMMENT", "SIGNATURE") rather than more
@@ -1001,6 +1036,7 @@ def find_candidate_iscn_lines(text: str) -> List[str]:
             candidate = candidate.rstrip() + _continuation_separator(candidate) + lines[i].strip()
             i += 1
             continuations += 1
+        candidate = _trim_trailing_garbage(candidate)
         if candidate:
             candidates.append(candidate)
     return candidates

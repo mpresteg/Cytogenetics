@@ -528,8 +528,12 @@ class TestCandidateLineDetection(unittest.TestCase):
         self.assertEqual(find_candidate_iscn_lines(text), [])
 
     def test_captures_rest_of_line_without_correction(self):
-        # Deliberately no auto-trimming of trailing prose caught on the
-        # same line — surfaced as-is for human review, per task 8's scope.
+        # Deliberately no *general* auto-trimming of trailing prose caught
+        # on the same line — surfaced as-is for human review, per task 8's
+        # scope. (A narrow, grammar-grounded exception exists for content
+        # glued directly onto a closed "[N]" cell count with no valid
+        # continuation -- see test_trims_label_glued_after_bracket below.
+        # This case has no bracket at all, so that exception doesn't apply.)
         text = "Result: 46,XY normal male karyotype, no abnormality detected."
         self.assertEqual(
             find_candidate_iscn_lines(text),
@@ -653,6 +657,70 @@ class TestCandidateLineDetection(unittest.TestCase):
         # Capped well short of the full 30-line tail.
         self.assertNotIn("bar29,", candidates[0])
         self.assertIn("bar0,", candidates[0])
+
+    def test_trims_label_glued_after_bracket(self):
+        # Real bug report: a report-generation software (Diagnostic
+        # Cytogenetics Incorporated's template) consistently emits
+        # "value" immediately followed by "Label:" with no separator
+        # throughout this document's whole text layer ("XX-XXXXCust.
+        # Specimen ID:", "11/08/2016Collection Date:", etc.) -- confirmed
+        # against the real PDF, not assumed. It collides badly when it
+        # lands on the karyotype line itself: "ABNORMAL RESULTS:" (the
+        # section's own label) glued directly onto the end of a real,
+        # valid karyotype string with zero separator, all on one physical
+        # line, so the naive "grab to end of line" rule can't tell where
+        # the real content ends. ISCN grammar itself can: nothing legal
+        # follows a closed "[N]" cell count except another clone ("/"),
+        # a combined FISH clause ("."), or the end of the string --
+        # never arbitrary text. Trims right after the first "]" whose
+        # following content isn't one of those, without touching a
+        # single character of the actual candidate.
+        text = "ABNORMAL RESULTS: 47,XY,+8[10]/46,XY[10]ABNORMAL RESULTS:\n"
+        self.assertEqual(
+            find_candidate_iscn_lines(text),
+            ["47,XY,+8[10]/46,XY[10]"],
+        )
+
+    def test_trailing_bracket_with_valid_continuations_not_trimmed(self):
+        # The trim only fires on an *invalid* continuation -- "/" (another
+        # mosaic clone) and "." (a combined karyotype+FISH clause) are
+        # both legal right after a closed "[N]" and must be left alone.
+        self.assertEqual(
+            find_candidate_iscn_lines("45,X,-Y[10]/46,XY[15]"),
+            ["45,X,-Y[10]/46,XY[15]"],
+        )
+        self.assertEqual(
+            find_candidate_iscn_lines("46,XY[20].nuc ish(D21S259x3)[200]"),
+            ["46,XY[20].nuc ish(D21S259x3)[200]"],
+        )
+
+    def test_trailing_bracket_at_true_end_of_line_not_trimmed(self):
+        # The common case: a candidate's "[N]" really is the last thing
+        # on the line, nothing glued after it -- no trim should fire.
+        self.assertEqual(
+            find_candidate_iscn_lines("46,XY,t(9;22)(q34;q11.2)[20]"),
+            ["46,XY,t(9;22)(q34;q11.2)[20]"],
+        )
+
+    def test_real_world_report_label_glued_after_karyotype(self):
+        # The actual text pypdf's extract_text() produces from the real
+        # report this bug was found in (page 1 only, trimmed to the
+        # relevant excerpt -- the full page also has prose that's not
+        # itself candidate-shaped, irrelevant here).
+        text = (
+            "Cytogenetics Number: NXX-XXXX\n"
+            "XX-XXXXCust. Specimen ID:\n"
+            "11/08/2016Collection Date:\n"
+            "11/09/2016Received Date:\n"
+            "11/10/2016Reported Date:\n"
+            "47,XY,+8[10]/46,XY[10]ABNORMAL RESULTS:\n"
+            "INTERPRETATION: G-banded chromosome analysis shows an abnormal "
+            "male karyotype with gain (trisomy) of\n"
+        )
+        self.assertEqual(
+            find_candidate_iscn_lines(text),
+            ["47,XY,+8[10]/46,XY[10]"],
+        )
 
 
 class TestLabInterpretationExtraction(unittest.TestCase):

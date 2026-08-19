@@ -215,6 +215,62 @@ as blocked/under-review, not "resolved" preemptively.
 
 ## Done
 
+### 22. Trim a report-generation label glued onto the end of a candidate
+
+**Context**: Bug report from live use, with a real (de-identified example)
+lab report PDF attached (Diagnostic Cytogenetics Incorporated's template).
+`find_candidate_iscn_lines()` returned
+`"47,XY,+8[10]/46,XY[10]ABNORMAL RESULTS:"` — a real, valid karyotype
+string with the report's own section label (`ABNORMAL RESULTS:`) glued
+directly onto the end, zero separator, both on one physical line.
+Confirmed against the actual PDF's raw `pypdf.extract_text()` output:
+this report-generation software consistently emits *value* immediately
+followed by *label* with no separator throughout its whole text layer
+(`"XX-XXXXCust. Specimen ID:"`, `"11/08/2016Collection Date:"`, etc.) —
+the same underlying quirk as the `find_lab_interpretation()` inline-
+header case from task 10's revisit, just landing on the karyotype line
+itself this time, where `CANDIDATE_LINE_RE`'s "grab to end of line" rule
+has no way to know where the real content stops.
+
+**Done when**: a candidate whose trailing content, immediately after a
+closed `[N]` cell count, isn't a legal ISCN continuation (another clone
+via `/`, a combined FISH clause via `.`, or end of string) is trimmed
+right there — using ISCN's own grammar as the stop signal, not a guess
+about what looks like prose, and without altering any character of the
+actual candidate. Verified against the real reported PDF, not just a
+synthetic case.
+
+**Out of scope**: general trimming of trailing prose caught on a line
+with no bracket to anchor on (e.g. `"46,XY normal male karyotype, no
+abnormality detected."`) — that's still surfaced as-is for human review,
+unchanged from task 8's original scope; only the specific, grammar-
+grounded closed-bracket signal is a new exception.
+
+Done: new `_trim_trailing_garbage()` in `iscn_parser.py`, applied to
+each candidate in `find_candidate_iscn_lines()` right after continuation
+folding completes (so it composes cleanly with tasks 16/17's folding
+logic rather than interacting with it). Scans for the first `]` whose
+following content (ignoring whitespace) isn't `/` or `.`, and truncates
+there. A candidate with no bracket at all is untouched, so the existing
+"no general auto-trimming" behavior and its test are unaffected.
+
+6 new tests in `TestCandidateLineDetection` (101 total, all passing):
+the minimal reproduction, valid `/` and `.` continuations confirmed *not*
+trimmed, the ordinary "nothing glued after" case confirmed not trimmed,
+and the real report's actual extracted text as a byte-preserving
+regression case. Verified against the real PDF directly
+(`find_candidate_iscn_lines()` on its actual `pypdf` output) and live
+end-to-end through the real UI: candidate loads clean, parses with zero
+errors, lab-reported interpretation panel renders correctly alongside it.
+
+Noted in passing, not fixed here (out of scope for this bug): the
+report's own interpretation calls trisomy 8 "a recurrent abnormality
+seen primarily in myeloid neoplasms including MDS, MPNs and AML," but
+`MALIGNANCY_KNOWLEDGE` (task 9) has no `+8` entry, so this tool's own
+assessment doesn't flag it. Worth a future backlog item if this table
+gets grown further (task 3 is the adjacent one, though that's scoped to
+`PROBE_KNOWLEDGE`/`FUSION_KNOWLEDGE`, not the malignancy table).
+
 ### 14. Batch mode breaks on ISCN strings with embedded line-wraps
 
 **Context**: `runParse()` in `app.js` splits pasted text on every `\n`
