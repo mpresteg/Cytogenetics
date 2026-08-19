@@ -101,7 +101,7 @@ different frontend later) are at **http://127.0.0.1:8000/docs**.
 ## A note on testing
 
 `iscn_parser.py`'s logic is covered by the automated suite described below
-(97 tests, run on every push/PR by CI). Beyond that, every feature in this
+(101 tests, run on every push/PR by CI). Beyond that, every feature in this
 tool has also been verified live — the actual FastAPI server launched, the
 actual UI driven in a browser, against both synthetic fixtures and real
 (de-identified) lab report PDFs — not just unit-tested in isolation. If
@@ -279,6 +279,18 @@ character permanently corrupting the paren-balance check and folding
 the candidate all the way to the line cap through unrelated report
 sections.
 
+The reverse problem also happens: some report-generation software
+emits a section's own label glued directly onto the *end* of the
+candidate on the same physical line, no separator (e.g. a karyotype
+string immediately followed by `ABNORMAL RESULTS:`, confirmed against
+a real report whose whole text layer consistently puts value before
+label with no space). `_trim_trailing_garbage()` truncates a candidate
+right after the first `[N]` cell count whose following content isn't a
+legal continuation (`/` for another clone, `.` for a combined FISH
+clause, or end of string) — a structural signal from ISCN grammar
+itself, not a guess about what looks like prose, and it never alters a
+single character of the actual candidate, only narrows where it ends.
+
 **Case-level clinical assessment:** every parse also returns a top-level
 `assessment` (`assess_case()` in `iscn_parser.py`) that rolls the case's
 findings up into one plain-English summary, plus an explicit flag when a
@@ -345,7 +357,7 @@ back to PIL's default only if neither is installed.
 Three modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 91 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 95 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)
@@ -389,7 +401,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-97 tests total, all passing — verified locally and independently by CI
+101 tests total, all passing — verified locally and independently by CI
 on every push, not just claimed to pass.
 
 ## Working on this repo
