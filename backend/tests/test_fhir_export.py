@@ -25,6 +25,7 @@ from fhir_export import (  # noqa: E402
     FhirExportError,
     MCODE_GENOMIC_VARIANT_PROFILE,
     MCODE_GENOMICS_REPORT_PROFILE,
+    _valid_iso_date,
 )
 from iscn_parser import parse_iscn  # noqa: E402
 
@@ -99,6 +100,30 @@ class TestDateNormalization(unittest.TestCase):
         # 13/04/1975 isn't a valid MM/DD/YYYY date under the assumed
         # convention -- don't guess a swapped day/month.
         self.assertIsNone(normalize_date("13/04/1975"))
+
+
+class TestValidIsoDate(unittest.TestCase):
+    """_valid_iso_date() is the strict export-time check -- documented as
+    a defense-in-depth guard for direct API callers (bypassing the
+    browser's own <input type="date">), so it needs to reject a
+    syntactically-shaped but nonexistent date, not just check the regex
+    pattern."""
+
+    def test_real_date_accepted(self):
+        self.assertEqual(_valid_iso_date("2024-01-02"), "2024-01-02")
+
+    def test_nonexistent_day_rejected(self):
+        self.assertIsNone(_valid_iso_date("2024-02-30"))  # Feb never has 30 days
+
+    def test_nonexistent_month_rejected(self):
+        self.assertIsNone(_valid_iso_date("2024-13-01"))
+
+    def test_malformed_string_rejected(self):
+        self.assertIsNone(_valid_iso_date("not-a-date"))
+
+    def test_none_and_empty(self):
+        self.assertIsNone(_valid_iso_date(None))
+        self.assertIsNone(_valid_iso_date(""))
 
 
 class TestMcodeExportShape(unittest.TestCase):
@@ -191,6 +216,26 @@ class TestMcodeExportShape(unittest.TestCase):
         patient = find_resource(bundle, "Patient")[0]
         self.assertNotIn("birthDate", patient)
         self.assertTrue(any("date_of_birth" in c for c in result["caveats"]))
+
+    def test_nonexistent_calendar_date_is_omitted_with_caveat(self):
+        # A syntactically ISO-shaped but nonexistent date (Feb never has
+        # 30 days) should be caught the same way as an unparseable one --
+        # not just pattern-matched.
+        result = build_mcode_export(self.parsed, {"date_of_birth": "2024-02-30",
+                                                    "patient_name": "Jane Doe"})
+        patient = find_resource(result["bundle"], "Patient")[0]
+        self.assertNotIn("birthDate", patient)
+        self.assertTrue(any("date_of_birth" in c for c in result["caveats"]))
+
+    def test_issued_carries_a_placeholder_time_caveat(self):
+        result = build_mcode_export(self.parsed, {"report_date": "2024-01-10"})
+        report = find_resource(result["bundle"], "DiagnosticReport")[0]
+        self.assertEqual(report["issued"], "2024-01-10T00:00:00Z")
+        self.assertTrue(any("placeholder" in c and "issued" in c for c in result["caveats"]))
+
+    def test_no_report_date_means_no_issued_caveat(self):
+        result = build_mcode_export(self.parsed, {})
+        self.assertFalse(any("issued" in c for c in result["caveats"]))
 
     def test_conclusion_carries_assessment_summary_when_flagged(self):
         parsed = parse_iscn("47,XY,+8[20]")

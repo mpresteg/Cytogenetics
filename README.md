@@ -103,7 +103,7 @@ different frontend later) are at **http://127.0.0.1:8000/docs**.
 ## A note on testing
 
 `iscn_parser.py`'s logic is covered by the automated suite described below
-(136 tests, run on every push/PR by CI). Beyond that, every feature in this
+(144 tests, run on every push/PR by CI). Beyond that, every feature in this
 tool has also been verified live — the actual FastAPI server launched, the
 actual UI driven in a browser, against both synthetic fixtures and real
 (de-identified) lab report PDFs — not just unit-tested in isolation. If
@@ -428,7 +428,7 @@ pytest-discoverable if that's your preferred runner:
   no karyotype content returns no candidates, and — the routing decision
   itself — a normal text-layer PDF takes the text path, not OCR, even
   though both code paths exist side by side.
-- `test_fhir_export.py` — 23 tests, zero dependencies beyond the stdlib.
+- `test_fhir_export.py` — 31 tests, zero dependencies beyond the stdlib.
   Covers: subject/demographic field extraction from PDF text (each
   labeled field, alternate label wording, no false-positive match on an
   unrelated label like "Physician Name:"), date normalization (ISO
@@ -455,7 +455,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-136 tests total, all passing — verified locally and independently by CI
+144 tests total, all passing — verified locally and independently by CI
 on every push, not just claimed to pass.
 
 ## Working on this repo

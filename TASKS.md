@@ -334,7 +334,7 @@ checkbox unlocks export anyway, matching `build_mcode_export()`'s own
 `override` parameter (also enforced server-side — the frontend check is
 a UX convenience, not the actual gate).
 
-23 new tests in `test_fhir_export.py` (136 total, all passing): subject
+31 tests in `test_fhir_export.py` (144 total, all passing): subject
 extraction (each field, alternate labels, no false-positive on
 unrelated labels), date normalization (ISO, US slash/dash,
 out-of-range/unrecognized formats rejected), the bundle shape (report +
@@ -349,6 +349,21 @@ JSON (correct `DiagnosticReport`/`Observation`/`Patient`/`Specimen`
 shape, correct references, correct dates); separately confirmed a
 clone with an unrecognized token disables the export button by default
 and the override checkbox correctly unlocks it.
+
+Two bugs caught in a self-review pass before merging: (1)
+`_valid_iso_date()` — documented as a defense-in-depth check for a
+direct API caller bypassing the browser's own date picker — only
+regex-matched the `YYYY-MM-DD` shape, so a syntactically-shaped but
+nonexistent date like `2024-02-30` would have passed through into
+`Patient.birthDate` unchecked; now also validated via
+`date.fromisoformat()`. (2) `DiagnosticReport.issued` was set to
+`f"{report_date}T00:00:00Z"` with no acknowledgment that the time-of-day
+was fabricated — `issued` is FHIR type `instant`, which (unlike
+`dateTime`) requires full time+timezone precision, so *some* time has to
+be synthesized when only a date was ever collected, but presenting a
+placeholder midnight-UTC instant as if it were real data was misleading;
+now called out via its own per-export caveat. 8 more tests added
+covering both.
 
 ### 24. Grow MALIGNANCY_KNOWLEDGE with a CLL panel and 6 more entries
 

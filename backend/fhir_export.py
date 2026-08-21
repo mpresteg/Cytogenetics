@@ -61,6 +61,7 @@ NOT independently verified this session, and called out below via
 
 import re
 import uuid
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 LOINC = "http://loinc.org"
@@ -168,12 +169,24 @@ def normalize_date(raw: Optional[str]) -> Optional[str]:
 
 def _valid_iso_date(raw: Optional[str]) -> Optional[str]:
     """Strict check used at export time: only a literal YYYY-MM-DD
-    string is accepted (what <input type="date"> submits); anything else
-    is dropped rather than reinterpreted, per normalize_date()'s doc
-    above."""
-    if raw and _ISO_DATE_RE.match(raw.strip()):
-        return raw.strip()
-    return None
+    string naming a real calendar date is accepted (what <input
+    type="date"> submits); anything else is dropped rather than
+    reinterpreted, per normalize_date()'s doc above. Checked against
+    `date.fromisoformat()`, not just the regex above -- the regex alone
+    would let a syntactically-shaped but nonexistent date like
+    "2024-02-30" through, which matters here since this is also this
+    function's documented defense-in-depth role if the endpoint is ever
+    called directly rather than through the browser's own date input."""
+    if not raw:
+        return None
+    raw = raw.strip()
+    if not _ISO_DATE_RE.match(raw):
+        return None
+    try:
+        date.fromisoformat(raw)
+    except ValueError:
+        return None
+    return raw
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +348,18 @@ def build_mcode_export(
     if collection_date:
         report["effectiveDateTime"] = collection_date
     if report_date:
+        # DiagnosticReport.issued is FHIR type `instant`, which (unlike
+        # `dateTime`) requires full date+time+timezone precision -- a
+        # bare "YYYY-MM-DD" is not a legal `instant` value, so a
+        # time-of-day has to go somewhere. Midnight UTC is a placeholder,
+        # not real data (only a date was ever collected/known), so this
+        # is called out as its own caveat rather than presented as if the
+        # report were genuinely issued at that exact instant.
         report["issued"] = f"{report_date}T00:00:00Z"
+        caveats.append(
+            f"issued {report['issued']!r} uses a placeholder midnight-UTC time — only the "
+            f"date ({report_date}) was actually provided, not a time of day."
+        )
     if assessment.get("summary"):
         report["conclusion"] = assessment["summary"]
     entries.insert(0, _entry(report_url, report))
