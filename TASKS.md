@@ -209,6 +209,67 @@ as blocked/under-review, not "resolved" preemptively.
 
 ---
 
+### 25. Export a parsed report as a CIBMTR-shaped FHIR Cytogenetics Observation (stage 1)
+
+**Context**: The long-term goal is using this tool's output to help
+populate CIBMTR transplant-outcomes forms. CIBMTR already publishes an
+official FHIR Implementation Guide with a dedicated Cytogenetics
+profile — an `Observation` (derived from HL7's Genomics Reporting
+Variant Profile) carrying the *raw ISCN string* as one component value
+(`Variant ISCN`), plus `genomic source class` (near-always "Somatic"
+here), `method` (karyotyping/FISH/microarray), an `effective` date, and
+a `subject` (Patient) reference. CIBMTR also has a live, OAuth2/OIDC-
+authenticated "Direct FHIR API" for actually submitting this data — see
+https://fhir.nmdp.org/ig/cibmtr-reporting/.
+
+This task is stage 1 only: produce a correctly-shaped FHIR resource
+locally. Actual submission via the Direct FHIR API is stage 2, a
+separate, later task — it needs real per-transplant-center credentials
+and is a materially bigger trust/security decision than anything this
+tool has done so far, deliberately not bundled in here.
+
+The `Variant ISCN` component is close to free: it's already exactly
+`clone.raw` (or the full multi-clone string) once parsed and reviewed.
+The genuinely new part is the `Observation` envelope, especially
+`subject` — this tool has been deliberately PHI-free since task 8
+("extracting anything beyond the karyotype string itself... is out of
+scope"), and populating a real Patient reference is a real step across
+that line, not just a data-shape exercise.
+
+**Done when**:
+- A parsed, error-free clone can be exported as a FHIR `Observation`
+  JSON matching CIBMTR's Cytogenetics profile shape (`Variant ISCN`
+  component = the validated raw ISCN string; `genomic source class` =
+  Somatic; `method` inferred from clone type — karyotype vs FISH-only vs
+  combined).
+- If a PDF was the source, candidate `subject`/demographic fields
+  (patient name, DOB, specimen ID, collection/report date) are extracted
+  the same structural way karyotype candidates already are, and shown
+  to the user for explicit review/edit/confirmation before being
+  included in the export — **never** silently auto-populated into the
+  exported resource. If typed/pasted input was used instead (no PDF),
+  these fields are just blank, user-fillable inputs.
+- A clone the tool itself flagged with errors or unrecognized tokens
+  cannot be exported without an explicit override — the tool's own
+  validation becomes a pre-export QC gate, not bypassed silently.
+- No data is persisted server-side and no network call is made to
+  CIBMTR or anywhere else — this is a local "produce the JSON, let the
+  user save/copy it" feature, same trust boundary the tool has always
+  had.
+
+**Out of scope**: actual submission via CIBMTR's Direct FHIR API
+(stage 2 — needs real OAuth2/OIDC credentials issued per transplant
+center, and its own explicit go/no-go decision); any server-side
+storage of extracted patient data; decomposing the ISCN string into
+CIBMTR FHIR elements beyond what their own profile actually asks for —
+they want the raw string, so this tool's finer-grained internal
+`Finding` structure doesn't need to be re-modeled into FHIR at all;
+supporting FHIR profiles/resources beyond the Cytogenetics Observation
+(e.g. full Patient/Specimen resources) unless CIBMTR's profile actually
+requires them as separate resources rather than reference stubs.
+
+---
+
 ## In progress
 
 *(none)*
