@@ -209,6 +209,12 @@ as blocked/under-review, not "resolved" preemptively.
 
 ---
 
+## In progress
+
+*(none)*
+
+## Done
+
 ### 25. Export a parsed report as an mCODE-shaped FHIR genomics resource (stage 1)
 
 **Context**: The long-term goal is using this tool's output to help
@@ -222,7 +228,7 @@ Unavailable" error. We could not confirm actual cytogenetics-specific
 use of it in the wild, as distinct from CIBMTR's broader (and real,
 Epic-integrated) Data Transformation Initiative for other data types.
 
-We're targeting **mCODE** instead — HL7's oncology-specific US FHIR
+Targeted **mCODE** instead — HL7's oncology-specific US FHIR
 Implementation Guide — as the primary shape for this stage. Specifically
 mCODE's **Genomic Variant Profile** and **Genomics Report Profile**,
 which formally derive (`baseDefinition`) from HL7's own Genomics
@@ -234,38 +240,16 @@ mCODE is a formal, oncology-flavored specialization of the same
 domain-agnostic genomics model CIBMTR's profile only loosely tracks, and
 it has meaningfully stronger real-world footing — 70+ implementations,
 built into Epic, active CodeX use cases in clinical trials matching and
-cancer registry reporting. An mCODE-conformant resource is also a valid
-(constrained) Genomics-Reporting-IG resource.
+cancer registry reporting.
 
-The core clinical vocabulary is shared regardless of which profile we
-ultimately target, so nothing here is thrown away if we later add a
-CIBMTR-specific adapter: CIBMTR's own example Cytogenetics Observation
+The core clinical vocabulary is shared regardless of which profile is
+ultimately targeted, so nothing here is thrown away if a CIBMTR-specific
+adapter gets added later: CIBMTR's own example Cytogenetics Observation
 uses LOINC `69548-6` ("Genetic variant assessment") as the main code,
-LOINC `81291-7` ("Variant ISCN") for a component carrying the raw ISCN
-string itself (value system `https://iscn.karger.com`, code = the raw
-string), and LOINC `48002-0` ("Genomic source class") valued
-`LA6684-0` ("Somatic"). These are standard genomics LOINC codes, not
-CIBMTR-specific, so they're the right vocabulary to reuse under mCODE
-too. What is *not* yet verified is mCODE's own literal resource
-composition (e.g. whether the Genomics Report wraps one or more Genomic
-Variant Observations via `hasMember`, per the Genomics Reporting IG's
-usual panel pattern) — that needs to be confirmed against mCODE's own
-published examples as a first step of implementation, rather than
-assumed identical to the CIBMTR JSON we already inspected.
-
-This task is stage 1 only: produce a correctly-shaped FHIR resource
-locally. Actual submission anywhere (CIBMTR's Direct FHIR API, an EHR,
-or otherwise) is a separate, later stage — it needs real per-institution
-credentials and is a materially bigger trust/security decision than
-anything this tool has done so far, deliberately not bundled in here.
-
-The ISCN-string component is close to free: it's already exactly
-`clone.raw` (or the full multi-clone string) once parsed and reviewed.
-The genuinely new part is the resource envelope, especially `subject` —
-this tool has been deliberately PHI-free since task 8 ("extracting
-anything beyond the karyotype string itself... is out of scope"), and
-populating a real Patient reference is a real step across that line,
-not just a data-shape exercise.
+LOINC `81291-7` for a component carrying the raw ISCN string itself
+(value system `https://iscn.karger.com`), and LOINC `48002-0` ("Genomic
+source class") valued `LA6684-0` ("Somatic"). These are standard
+genomics LOINC codes, not CIBMTR-specific.
 
 **Done when**:
 - A parsed, error-free clone can be exported as FHIR JSON matching
@@ -302,13 +286,84 @@ genomics observation(s) themselves (e.g. full Patient/Specimen
 resources) unless mCODE's profile actually requires them as separate
 resources rather than reference stubs.
 
----
+Done: new module `fhir_export.py` (kept separate from `iscn_parser.py`
+— this is output-shaping for a specific downstream consumer, a
+different concern from ISCN grammar). Two independent pieces:
+`extract_subject_candidates()` (label-based regex scan for the five
+subject fields, deliberately narrower/stricter than the existing
+karyotype-candidate and lab-interpretation scanners, since a
+false-positive here feeds a clinical-shaped export rather than just a
+review textarea) and `build_mcode_export()` (turns a `parse_iscn()`
+result into a FHIR `Bundle`).
 
-## In progress
+Before writing code, fetched the actual mCODE `StructureDefinition`
+pages rather than relying on memory: confirmed the Genomics Report
+Profile is `DiagnosticReport`-based (category fixed to Genetics,
+`result` = array of Observation references — the standard FHIR
+report-wraps-results pattern) and the Genomic Variant Profile is
+`Observation`-based (`code` fixed to LOINC 69548-6, a
+`cytogenomic-nomenclature` component at LOINC 81291-7 — the same code
+CIBMTR's real example used, confirming it's genuinely shared genomics
+vocabulary and not a CIBMTR invention). Two things could *not* be
+verified this way — the exact LOINC answer-list code for
+`Observation.method`, and whether "genomic source class" (48002-0) is
+an officially defined mCODE component slice — so rather than fabricate
+either, `method`/the report's top-level `code` are populated as
+text-only `CodeableConcept`s (mCODE's binding for `code` is
+"preferred," not fixed, so this is spec-compliant, just not maximally
+coded), and every export response carries a `caveats` list naming
+exactly what wasn't verified, shown to the user next to the JSON.
 
-*(none)*
+Date handling: rather than parse ambiguous free-text dates
+server-side (which would mean guessing MM/DD vs. DD/MM), the frontend
+uses native `<input type="date">` for every date field, so by the time
+a date reaches the export endpoint it's already an unambiguous ISO
+string. `normalize_date()` still exists for two narrower purposes:
+best-effort pre-filling those date inputs from a raw PDF-extracted
+candidate (US slash/dash format assumed, ISO passed through, anything
+else left for the human to type), and defense-in-depth validation if
+the endpoint is ever called directly. An extracted date that can't be
+normalized isn't lost — the raw text is shown as a hint next to the
+still-blank date input.
 
-## Done
+The pre-export QC gate reuses exactly the same "errors or an
+unrecognized finding" condition the UI already labels "Needs review" on
+a clone-card, so the export button's default-disabled state and the
+on-screen status badge can never disagree; an explicit override
+checkbox unlocks export anyway, matching `build_mcode_export()`'s own
+`override` parameter (also enforced server-side — the frontend check is
+a UX convenience, not the actual gate).
+
+31 tests in `test_fhir_export.py` (144 total, all passing): subject
+extraction (each field, alternate labels, no false-positive on
+unrelated labels), date normalization (ISO, US slash/dash,
+out-of-range/unrecognized formats rejected), the bundle shape (report +
+one Observation per clone, `result` references matching, ISCN and
+genomic-source-class component values, Patient/Specimen only present
+when subject fields are given, an invalid date omitted with a caveat),
+and the QC gate (blocked by errors, blocked by an unrecognized token,
+allowed through with `override=True`, empty-input case). Verified live
+in the browser end-to-end: parsed a real mosaic karyotype, filled in
+all five subject fields, exported, and inspected the resulting Bundle
+JSON (correct `DiagnosticReport`/`Observation`/`Patient`/`Specimen`
+shape, correct references, correct dates); separately confirmed a
+clone with an unrecognized token disables the export button by default
+and the override checkbox correctly unlocks it.
+
+Two bugs caught in a self-review pass before merging: (1)
+`_valid_iso_date()` — documented as a defense-in-depth check for a
+direct API caller bypassing the browser's own date picker — only
+regex-matched the `YYYY-MM-DD` shape, so a syntactically-shaped but
+nonexistent date like `2024-02-30` would have passed through into
+`Patient.birthDate` unchecked; now also validated via
+`date.fromisoformat()`. (2) `DiagnosticReport.issued` was set to
+`f"{report_date}T00:00:00Z"` with no acknowledgment that the time-of-day
+was fabricated — `issued` is FHIR type `instant`, which (unlike
+`dateTime`) requires full time+timezone precision, so *some* time has to
+be synthesized when only a date was ever collected, but presenting a
+placeholder midnight-UTC instant as if it were real data was misleading;
+now called out via its own per-export caveat. 8 more tests added
+covering both.
 
 ### 24. Grow MALIGNANCY_KNOWLEDGE with a CLL panel and 6 more entries
 

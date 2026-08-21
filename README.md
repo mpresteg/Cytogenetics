@@ -28,9 +28,10 @@ Cytogenetics/
     tests.yml            CI: runs the backend test suite on every push/PR
   TASKS.md                Backlog of self-contained tasks (see "Working on this repo")
   backend/
-    main.py                FastAPI app: /api/parse, /api/extract-pdf, /api/editions,
-                            /api/examples, serves the frontend
+    main.py                FastAPI app: /api/parse, /api/extract-pdf, /api/export-fhir,
+                            /api/editions, /api/examples, serves the frontend
     iscn_parser.py          All parsing/validation/interpretation logic (no framework deps)
+    fhir_export.py          mCODE-shaped FHIR export (task 25) + subject-field PDF extraction
     requirements.txt
     static/
       index.html
@@ -40,6 +41,7 @@ Cytogenetics/
       test_iscn_parser.py
       test_pdf_extraction.py
       test_ocr_extraction.py
+      test_fhir_export.py
 ```
 
 ## Visual design
@@ -101,13 +103,13 @@ different frontend later) are at **http://127.0.0.1:8000/docs**.
 ## A note on testing
 
 `iscn_parser.py`'s logic is covered by the automated suite described below
-(113 tests, run on every push/PR by CI). Beyond that, every feature in this
+(144 tests, run on every push/PR by CI). Beyond that, every feature in this
 tool has also been verified live — the actual FastAPI server launched, the
 actual UI driven in a browser, against both synthetic fixtures and real
 (de-identified) lab report PDFs — not just unit-tested in isolation. If
 something doesn't wire up when you run it locally, the `/docs` page is the
-fastest way to check the raw JSON shape `/api/parse` and `/api/extract-pdf`
-actually return, versus what `app.js` expects.
+fastest way to check the raw JSON shape `/api/parse`, `/api/extract-pdf`,
+and `/api/export-fhir` actually return, versus what `app.js` expects.
 
 ## What this prototype covers
 
@@ -252,11 +254,13 @@ that caution is surfaced in a separate panel below the upload status
 (listing each OCR-derived line, with a "verify against the original"
 note), not by mutating what's in the textarea. A report with zero
 candidates says so plainly rather than leaving a blank textarea that
-reads as "nothing to report." Extracting anything beyond the karyotype
-string itself (patient name, specimen ID, etc.) is out of scope, as is
-"correcting" likely OCR misreads against ISCN grammar — a misread
-character surfaces through the existing error/warning UI as-is, never
-silently patched.
+reads as "nothing to report." "Correcting" likely OCR misreads against
+ISCN grammar is out of scope — a misread character surfaces through the
+existing error/warning UI as-is, never silently patched. (A PDF upload
+*does* also scan for a small set of subject/demographic fields now — see
+**FHIR export (mCODE)** below — but the same "surface for review, never
+auto-apply" discipline applies there too; nothing extracted from a PDF
+is ever used without an explicit human confirmation step.)
 
 `find_candidate_iscn_lines()` also handles a real-world wrinkle: some
 report-generation software hard-wraps a long ISCN string across several
@@ -337,6 +341,42 @@ other real section names ("Signature," "Results," "Cultures,"
 boundary. If no interpretation section is found, that's stated plainly
 rather than a blank space that reads as "nothing to report."
 
+**FHIR export (mCODE):** a parsed result can be exported as FHIR JSON
+shaped to mCODE's Genomic Variant / Genomics Report profiles (`POST
+/api/export-fhir`, built by `fhir_export.py` — task 25, stage 1). mCODE
+was chosen over CIBMTR's own bespoke Cytogenetics profile after
+checking both against their actual published `StructureDefinition`
+pages: mCODE's genomics profiles formally derive from HL7's Genomics
+Reporting IG and have real production adoption (Epic, 70+
+implementations), while CIBMTR's own profile showed several staleness
+signals (self-described "first publication," an outdated toolchain, a
+live service-unavailable error) and no confirmed cytogenetics-specific
+real-world use — see task 25 in `TASKS.md` for the full comparison. The
+export is a `Bundle` containing one `DiagnosticReport` (mCODE's Genomics
+Report Profile) referencing one `Observation` per clone (mCODE's
+Genomic Variant Profile, `component`s carrying the exact validated raw
+ISCN string at LOINC 81291-7 and a "Somatic" genomic-source-class value
+at LOINC 48002-0), plus optional `Patient`/`Specimen` resources.
+
+A clone this tool itself flagged (a parse error, or an unrecognized
+finding) blocks export by default — the same validation status already
+shown as "Needs review" on its clone-card is reused as the export's own
+pre-export QC gate, not bypassed silently; the UI surfaces an explicit
+"export anyway" override for the rare case that's actually wanted.
+Subject/demographic fields (patient name, DOB, specimen ID,
+collection/report date) are optional and, when a PDF was the source,
+pre-filled from `extract_subject_candidates()` scanning for a small set
+of labeled fields ("Patient:", "DOB:", "Specimen ID:", etc.) — always
+editable, never auto-included without being visibly present in the form
+first, same review discipline as karyotype candidates get. Every export
+response also carries a `caveats` list naming the specific elements this
+prototype couldn't verify against mCODE's exact spec this round (e.g.
+`method`'s coded value) — shown to the user alongside the JSON rather
+than silently asserted as spec-confirmed. Nothing is persisted
+server-side and no network call is made anywhere; this stage produces
+JSON locally for the user to save or copy. Actual submission (to
+CIBMTR's API or elsewhere) is out of scope, a separate future stage.
+
 Anything outside all of the above grammar is returned as
 `category: "unrecognized"` with an explicit warning — it's never silently
 mis-parsed or dropped. This matters a lot for a clinical-adjacent tool: false
@@ -354,7 +394,7 @@ Tesseract can misread digits rendered in PIL's own bundled default font
 font when one's available (DejaVu on Linux, Arial on macOS), falling
 back to PIL's default only if neither is installed.
 
-Three modules under `backend/tests/`, all stdlib `unittest`, all
+Four modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
 
 - `test_iscn_parser.py` — 107 tests, zero dependencies beyond the stdlib,
@@ -388,11 +428,25 @@ pytest-discoverable if that's your preferred runner:
   no karyotype content returns no candidates, and — the routing decision
   itself — a normal text-layer PDF takes the text path, not OCR, even
   though both code paths exist side by side.
+- `test_fhir_export.py` — 31 tests, zero dependencies beyond the stdlib.
+  Covers: subject/demographic field extraction from PDF text (each
+  labeled field, alternate label wording, no false-positive match on an
+  unrelated label like "Physician Name:"), date normalization (ISO
+  passthrough, US slash/dash format, rejecting anything ambiguous), the
+  mCODE bundle shape itself (`DiagnosticReport` + one `Observation` per
+  clone, `result` references matching every Observation, the ISCN and
+  genomic-source-class components, `Patient`/`Specimen` inclusion only
+  when subject fields are given, an invalid date being omitted with a
+  caveat rather than guessed at), and the pre-export QC gate (blocked by
+  a clone's own errors or an unrecognized finding, allowed through with
+  `override=True`, and the empty-input case).
 
-Both PDF-related modules deliberately skip FastAPI's `TestClient` (which
-needs `httpx`, not otherwise a dependency here) — the actual HTTP route
-is verified by hand in the browser instead, consistent with how this repo
-has always treated the FastAPI layer (see "A note on testing" above).
+`test_pdf_extraction.py`, `test_ocr_extraction.py`, and `test_fhir_export.py`
+all deliberately skip FastAPI's `TestClient` (which needs `httpx`, not
+otherwise a dependency here) — each tests the underlying pure functions
+directly, and the actual HTTP routes are verified by hand in the browser
+instead, consistent with how this repo has always treated the FastAPI
+layer (see "A note on testing" above).
 
 ```bash
 cd backend
@@ -401,7 +455,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-113 tests total, all passing — verified locally and independently by CI
+144 tests total, all passing — verified locally and independently by CI
 on every push, not just claimed to pass.
 
 ## Working on this repo

@@ -11,6 +11,31 @@ const pdfFileInput = document.getElementById('pdf-file-input');
 const uploadPdfSpinner = document.getElementById('upload-pdf-spinner');
 const ocrReviewPanel = document.getElementById('ocr-review-panel');
 
+// task 25: subject/demographic fields for FHIR export. Free text for
+// name/specimen ID; native <input type="date"> for every date field so
+// whatever reaches /api/export-fhir is already an unambiguous ISO date
+// (see fhir_export.py's normalize_date() docstring) -- the browser's
+// own date picker/validation does the disambiguation work this tool
+// would otherwise have to guess at from free text.
+const subjectFields = {
+  patient_name: document.getElementById('subject-patient-name'),
+  date_of_birth: document.getElementById('subject-dob'),
+  specimen_id: document.getElementById('subject-specimen-id'),
+  collection_date: document.getElementById('subject-collection-date'),
+  report_date: document.getElementById('subject-report-date'),
+};
+const subjectDateHints = {
+  date_of_birth: document.getElementById('subject-dob-hint'),
+  collection_date: document.getElementById('subject-collection-date-hint'),
+  report_date: document.getElementById('subject-report-date-hint'),
+};
+
+function currentSubjectFields() {
+  const out = {};
+  Object.entries(subjectFields).forEach(([key, el]) => { out[key] = el.value || ''; });
+  return out;
+}
+
 // task 10: the lab's own written interpretation, extracted from the most
 // recently uploaded PDF (if any), held here so it can be shown alongside
 // this tool's generated assessment once the user clicks Parse -- the two
@@ -98,6 +123,7 @@ fileInput.addEventListener('change', () => {
   // than show it stale.
   hideOcrReviewPanel();
   currentLabInterpretation = undefined;
+  clearSubjectFields();
   resultsEl.innerHTML = '';
 
   const reader = new FileReader();
@@ -142,6 +168,38 @@ function renderPendingParsePlaceholder(container) {
   panel.appendChild(body);
 
   container.appendChild(panel);
+}
+
+function clearSubjectFields() {
+  Object.values(subjectFields).forEach(el => { el.value = ''; });
+  Object.values(subjectDateHints).forEach(el => { el.textContent = ''; });
+}
+
+// task 25: pre-fills the subject-field inputs from a PDF's extracted
+// candidates (extract_subject_candidates() in fhir_export.py) --
+// editable, not locked, and never something the user has to hunt for:
+// same "surface for review" treatment the ISCN candidates themselves
+// already get in the textarea. Text fields (name, specimen ID) get the
+// raw extracted string directly. Date fields only get pre-filled when
+// the backend could confidently normalize the extracted text to ISO
+// (see normalize_date()'s doc on why it only trusts unambiguous
+// formats) -- when it couldn't, the date input is left blank and the
+// raw extracted text is shown next to it as a hint, so nothing found in
+// the PDF is silently lost even when it can't be safely auto-filled.
+function applySubjectCandidates(candidates) {
+  clearSubjectFields();
+  if (!candidates) return;
+  if (candidates.patient_name) subjectFields.patient_name.value = candidates.patient_name;
+  if (candidates.specimen_id) subjectFields.specimen_id.value = candidates.specimen_id;
+  ['date_of_birth', 'collection_date', 'report_date'].forEach(key => {
+    const normalized = candidates[`${key}_normalized`];
+    const raw = candidates[key];
+    if (normalized) {
+      subjectFields[key].value = normalized;
+    } else if (raw) {
+      subjectDateHints[key].textContent = `PDF text found: "${raw}" — enter above if this looks right.`;
+    }
+  });
 }
 
 function showUploadStatus(message, isError = false) {
@@ -229,6 +287,7 @@ pdfFileInput.addEventListener('change', async () => {
 
   hideOcrReviewPanel();
   currentLabInterpretation = undefined;
+  clearSubjectFields();
   resultsEl.innerHTML = '';
   showUploadStatus(`Reading "${file.name}"…`);
   const formData = new FormData();
@@ -249,6 +308,7 @@ pdfFileInput.addEventListener('change', async () => {
     currentLabInterpretation = data.lab_interpretation ?? null;
     currentLabInterpretationUsedOcr = !!data.lab_interpretation_used_ocr;
     renderLabInterpretationPanel(currentLabInterpretation, currentLabInterpretationUsedOcr, resultsEl);
+    applySubjectCandidates(data.subject_candidates);
 
     if (data.candidates.length === 0) {
       showUploadStatus(`No karyotype-shaped lines found in "${file.name}" (${data.page_count} page(s)).`, true);
@@ -424,7 +484,7 @@ async function runParse() {
         label.textContent = `Input ${idx + 1} of ${lines.length}`;
         block.appendChild(label);
       }
-      renderClones(data, block);
+      renderClones(data, block, lines[idx]);
       resultsEl.appendChild(block);
     });
   } catch (e) {
@@ -485,8 +545,12 @@ function renderAssessment(assessment, container) {
 // Renders one /api/parse result (mosaic banner + clone cards) into the
 // given container. Split out from runParse so batch mode can render each
 // line's result into its own labeled block using the same markup as
-// single-string mode.
-function renderClones(data, container) {
+// single-string mode. `rawInput` is the exact string that was sent to
+// /api/parse to produce `data` -- threaded through so the export panel
+// (task 25) can re-submit it to /api/export-fhir, which re-parses
+// server-side rather than trusting a client-held copy of the result
+// (see main.py's comment on that endpoint).
+function renderClones(data, container, rawInput) {
   if (data.errors && data.errors.length && (!data.clones || data.clones.length === 0)) {
     const errBox = document.createElement('div');
     errBox.className = 'errors';
@@ -574,6 +638,113 @@ function renderClones(data, container) {
 
     container.appendChild(card);
   });
+
+  if (rawInput && data.clones && data.clones.length) {
+    renderExportPanel(data, rawInput, container);
+  }
+}
+
+// task 25 (stage 1): "Export FHIR (mCODE)" button for one parsed result
+// (covers every clone in `data`, mosaic or not -- /api/export-fhir wraps
+// them all into one DiagnosticReport, one Observation per clone, see
+// fhir_export.py). Blocked by default whenever any clone needs review
+// (errors, or an unrecognized finding) -- matching exactly the same
+// "Needs review" badge condition each clone-card above already shows --
+// with an explicit, visibly-cautionary override checkbox to export
+// anyway, same discipline as the backend's own QC gate in
+// build_mcode_export(). Re-sends the subject fields fresh on every
+// click, so editing them after this panel first renders is honored.
+function renderExportPanel(data, rawInput, container) {
+  const needsReview = data.clones.some(c =>
+    (c.errors && c.errors.length) || c.findings.some(f => f.category === 'unrecognized'));
+
+  const panel = document.createElement('div');
+  panel.className = 'export-panel';
+
+  const controls = document.createElement('div');
+  controls.className = 'export-controls';
+  const exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.className = 'secondary';
+  exportBtn.textContent = 'Export FHIR (mCODE)…';
+  controls.appendChild(exportBtn);
+  panel.appendChild(controls);
+
+  let overrideCheckbox = null;
+  if (needsReview) {
+    const row = document.createElement('div');
+    row.className = 'override-row';
+    overrideCheckbox = document.createElement('input');
+    overrideCheckbox.type = 'checkbox';
+    overrideCheckbox.id = `export-override-${Math.random().toString(36).slice(2)}`;
+    const lbl = document.createElement('label');
+    lbl.htmlFor = overrideCheckbox.id;
+    lbl.textContent = 'Export anyway, despite the validation issue(s) flagged above';
+    row.appendChild(overrideCheckbox);
+    row.appendChild(lbl);
+    panel.appendChild(row);
+    exportBtn.disabled = true;
+    overrideCheckbox.addEventListener('change', () => {
+      exportBtn.disabled = !overrideCheckbox.checked;
+    });
+  }
+
+  const status = document.createElement('p');
+  status.className = 'export-status';
+  status.hidden = true;
+  panel.appendChild(status);
+
+  exportBtn.addEventListener('click', async () => {
+    status.hidden = false;
+    status.className = 'export-status';
+    status.textContent = 'Exporting…';
+    exportBtn.disabled = true;
+    const existingJson = panel.querySelector('.export-json');
+    if (existingJson) existingJson.remove();
+    const existingCaveats = panel.querySelector('.export-caveats');
+    if (existingCaveats) existingCaveats.remove();
+
+    try {
+      const res = await fetch('/api/export-fhir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          iscn: rawInput,
+          edition: editionSelect.value || undefined,
+          subject: currentSubjectFields(),
+          override: !!(overrideCheckbox && overrideCheckbox.checked),
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        status.className = 'export-status error';
+        status.textContent = result.detail || 'Export failed.';
+        return;
+      }
+      status.textContent = 'Exported.';
+
+      if (result.caveats && result.caveats.length) {
+        const caveatBox = document.createElement('div');
+        caveatBox.className = 'export-caveats';
+        caveatBox.innerHTML = `<p>Stage-1 export caveats — review before relying on this JSON:</p>
+          <ul>${result.caveats.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ul>`;
+        panel.appendChild(caveatBox);
+      }
+
+      const jsonText = JSON.stringify(result.bundle, null, 2);
+      const pre = document.createElement('pre');
+      pre.className = 'export-json';
+      pre.textContent = jsonText;
+      panel.appendChild(pre);
+    } catch (e) {
+      status.className = 'export-status error';
+      status.textContent = `Request failed: ${e}`;
+    } finally {
+      exportBtn.disabled = !!(needsReview && !(overrideCheckbox && overrideCheckbox.checked));
+    }
+  });
+
+  container.appendChild(panel);
 }
 
 loadExamples();
