@@ -792,6 +792,13 @@ def _any_of(*matchers):
 # Haematolymphoid Tumours (5th ed., 2022) — this table only names the
 # pairing, never a stage/prognosis/treatment implication. Not exhaustive;
 # see task 9 in TASKS.md for the list this was seeded from.
+#
+# Not every entry is a WHO-defined disease-subtype-specific fusion event
+# like the ones above, though — trisomy 8 (task 22's follow-up) is a
+# common recurrent finding across several myeloid neoplasms rather than
+# a single defining lesion, so it's cited to its own, more accurate
+# source (the IPSS-R cytogenetic risk scoring system for MDS) instead of
+# the WHO-classification framing that fits the fusion-defined entries.
 MALIGNANCY_KNOWLEDGE = [
     (_chrom_set_matcher({"9", "22"}, count=2),
      "t(9;22) — BCR-ABL1",
@@ -825,6 +832,12 @@ MALIGNANCY_KNOWLEDGE = [
     (_single_chrom_matcher("del", "5"),
      "del(5q)",
      "Recurrently associated with myelodysplastic syndrome (MDS) and AML."),
+    (_single_chrom_matcher("+", "8", category="numerical"),
+     "+8 (trisomy 8)",
+     "One of the most common recurrent abnormalities in myeloid neoplasms "
+     "(MDS, AML, MPN) — a scored cytogenetic risk category in the IPSS-R "
+     "for MDS (Greenberg, Tuechler, Schanz et al., Blood 120:2454, 2012), "
+     "rather than a single defining fusion event."),
 ]
 
 

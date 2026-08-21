@@ -453,6 +453,24 @@ class TestClinicalAssessment(unittest.TestCase):
         self.assertTrue(a["flagged"])
         self.assertTrue(any("del(5q)" in m["label"] for m in a["matches"]))
 
+    def test_trisomy_8_flags(self):
+        r = parse_iscn("47,XY,+8")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("+8" in m["label"] for m in a["matches"]))
+
+    def test_trisomy_8_flags_real_world_mosaic_report(self):
+        # The actual reported string from a real (de-identified) MDS-
+        # workup report -- task 22's bug fix, same document. Its own
+        # interpretation calls trisomy 8 "a recurrent abnormality seen
+        # primarily in myeloid neoplasms including MDS, MPNs and AML."
+        r = parse_iscn("47,XY,+8[10]/46,XY[10]")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("+8" in m["label"] for m in a["matches"]))
+        # Correctly attributed to the abnormal clone, not the normal one.
+        self.assertEqual(a["matches"][0]["clone_index"], 0)
+
     def test_normal_karyotype_not_flagged(self):
         r = parse_iscn("46,XY")
         a = r["assessment"]
@@ -467,13 +485,16 @@ class TestClinicalAssessment(unittest.TestCase):
 
     def test_complex_karyotype_flags_without_specific_match(self):
         # Three unrelated abnormalities, none individually in the table.
-        r = parse_iscn("48,XY,+8,+21,add(4)(p16)")
+        # (+9, not +8 -- +8 is individually flaggable as of the trisomy 8
+        # entry, which would confound what this test is isolating.)
+        r = parse_iscn("48,XY,+9,+21,add(4)(p16)")
         a = r["assessment"]
         self.assertTrue(a["flagged"])
         self.assertTrue(any("Complex karyotype" in m["label"] for m in a["matches"]))
 
     def test_two_abnormalities_not_complex(self):
-        r = parse_iscn("47,XY,+8,add(4)(p16)")
+        # (+9, not +8 -- see note above.)
+        r = parse_iscn("47,XY,+9,add(4)(p16)")
         a = r["assessment"]
         self.assertFalse(a["flagged"])
 

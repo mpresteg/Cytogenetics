@@ -215,6 +215,56 @@ as blocked/under-review, not "resolved" preemptively.
 
 ## Done
 
+### 23. Add trisomy 8 to MALIGNANCY_KNOWLEDGE
+
+**Context**: Follow-up from task 22's real report — a de-identified
+MDS-workup report whose own interpretation calls trisomy 8 "a recurrent
+abnormality seen primarily in myeloid neoplasms including MDS, MPNs and
+AML," yet this tool's case-level assessment (`MALIGNANCY_KNOWLEDGE`,
+task 9) didn't flag `+8` at all. Unlike every existing entry, trisomy 8
+isn't a single WHO-defined disease-subtype-specific fusion event — it's
+a common recurrent finding across several myeloid neoplasms, better
+characterized via the IPSS-R cytogenetic risk scoring system for MDS
+(Greenberg, Tuechler, Schanz et al., Blood 120:2454, 2012) than the
+WHO-classification framing the rest of the table cites, and the actual
+real report cited that exact paper independently.
+
+**Done when**: `+8` (trisomy 8) is a matchable entry in
+`MALIGNANCY_KNOWLEDGE`, same shape and same "reference note, not
+diagnostic" discipline as the existing entries, with an accurate
+citation (not the generic WHO-classification framing, which doesn't fit
+this entry). Test coverage the same as the other entries.
+
+**Out of scope**: growing the table further beyond trisomy 8 (e.g. +9,
+del(20q), other MDS/AML-recurrent numerical findings) — narrowly scoped
+to what task 22 actually surfaced; a broader table expansion is its own
+future task if wanted.
+
+Done: new entry in `MALIGNANCY_KNOWLEDGE` using the existing
+`_single_chrom_matcher("+", "8", category="numerical")` helper (same
+pattern already used for `-7`). Caught and fixed while implementing:
+two existing tests
+(`test_complex_karyotype_flags_without_specific_match`,
+`test_two_abnormalities_not_complex`) used `+8` as one of their "not
+individually in the table" example abnormalities — both would have
+silently changed meaning (one still passing for the wrong reason via
+`assertTrue`/`any(...)`, the other failing outright) once `+8` became
+individually flaggable; swapped to `+9` in both, which isn't in the
+table.
+
+Also caught in review before finalizing: the note text's first draft
+said "not... like the entries above," phrasing that only makes sense
+read in the source file next to the other entries — reworded so the
+note stands on its own when read in isolation in the UI, which is how
+a user actually encounters it.
+
+2 new tests in `TestClinicalAssessment` (103 total, all passing): a
+minimal `+8` case, and the actual real-world string from task 22's
+report (`47,XY,+8[10]/46,XY[10]`) confirming the flag is attributed to
+the correct (abnormal) clone, not the normal one in the same mosaic
+pair. Verified live in the browser: the "Reference flag" panel now
+renders correctly for that exact string.
+
 ### 22. Trim a report-generation label glued onto the end of a candidate
 
 **Context**: Bug report from live use, with a real (de-identified example)
