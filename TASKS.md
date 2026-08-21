@@ -209,39 +209,71 @@ as blocked/under-review, not "resolved" preemptively.
 
 ---
 
-### 25. Export a parsed report as a CIBMTR-shaped FHIR Cytogenetics Observation (stage 1)
+### 25. Export a parsed report as an mCODE-shaped FHIR genomics resource (stage 1)
 
 **Context**: The long-term goal is using this tool's output to help
-populate CIBMTR transplant-outcomes forms. CIBMTR already publishes an
-official FHIR Implementation Guide with a dedicated Cytogenetics
-profile — an `Observation` (derived from HL7's Genomics Reporting
-Variant Profile) carrying the *raw ISCN string* as one component value
-(`Variant ISCN`), plus `genomic source class` (near-always "Somatic"
-here), `method` (karyotyping/FISH/microarray), an `effective` date, and
-a `subject` (Patient) reference. CIBMTR also has a live, OAuth2/OIDC-
-authenticated "Direct FHIR API" for actually submitting this data — see
-https://fhir.nmdp.org/ig/cibmtr-reporting/.
+populate CIBMTR transplant-outcomes forms. CIBMTR does publish its own
+FHIR Implementation Guide with a dedicated Cytogenetics profile, but it
+shows real staleness signals on inspection: its own QA page describes it
+as "the first publication," pins an outdated IG-Publisher toolchain and
+an older `hl7.us.core` version than what's current, and (at the time we
+checked) its package-list endpoint was returning a live "Service
+Unavailable" error. We could not confirm actual cytogenetics-specific
+use of it in the wild, as distinct from CIBMTR's broader (and real,
+Epic-integrated) Data Transformation Initiative for other data types.
+
+We're targeting **mCODE** instead — HL7's oncology-specific US FHIR
+Implementation Guide — as the primary shape for this stage. Specifically
+mCODE's **Genomic Variant Profile** and **Genomics Report Profile**,
+which formally derive (`baseDefinition`) from HL7's own Genomics
+Reporting IG (Variant profile and
+`http://hl7.org/fhir/uv/genomics-reporting/STU2/StructureDefinition-genomics-report`
+respectively) — confirmed by fetching both profiles' actual
+`StructureDefinition` pages. So this isn't a competing spec to CIBMTR's:
+mCODE is a formal, oncology-flavored specialization of the same
+domain-agnostic genomics model CIBMTR's profile only loosely tracks, and
+it has meaningfully stronger real-world footing — 70+ implementations,
+built into Epic, active CodeX use cases in clinical trials matching and
+cancer registry reporting. An mCODE-conformant resource is also a valid
+(constrained) Genomics-Reporting-IG resource.
+
+The core clinical vocabulary is shared regardless of which profile we
+ultimately target, so nothing here is thrown away if we later add a
+CIBMTR-specific adapter: CIBMTR's own example Cytogenetics Observation
+uses LOINC `69548-6` ("Genetic variant assessment") as the main code,
+LOINC `81291-7` ("Variant ISCN") for a component carrying the raw ISCN
+string itself (value system `https://iscn.karger.com`, code = the raw
+string), and LOINC `48002-0` ("Genomic source class") valued
+`LA6684-0` ("Somatic"). These are standard genomics LOINC codes, not
+CIBMTR-specific, so they're the right vocabulary to reuse under mCODE
+too. What is *not* yet verified is mCODE's own literal resource
+composition (e.g. whether the Genomics Report wraps one or more Genomic
+Variant Observations via `hasMember`, per the Genomics Reporting IG's
+usual panel pattern) — that needs to be confirmed against mCODE's own
+published examples as a first step of implementation, rather than
+assumed identical to the CIBMTR JSON we already inspected.
 
 This task is stage 1 only: produce a correctly-shaped FHIR resource
-locally. Actual submission via the Direct FHIR API is stage 2, a
-separate, later task — it needs real per-transplant-center credentials
-and is a materially bigger trust/security decision than anything this
-tool has done so far, deliberately not bundled in here.
+locally. Actual submission anywhere (CIBMTR's Direct FHIR API, an EHR,
+or otherwise) is a separate, later stage — it needs real per-institution
+credentials and is a materially bigger trust/security decision than
+anything this tool has done so far, deliberately not bundled in here.
 
-The `Variant ISCN` component is close to free: it's already exactly
+The ISCN-string component is close to free: it's already exactly
 `clone.raw` (or the full multi-clone string) once parsed and reviewed.
-The genuinely new part is the `Observation` envelope, especially
-`subject` — this tool has been deliberately PHI-free since task 8
-("extracting anything beyond the karyotype string itself... is out of
-scope"), and populating a real Patient reference is a real step across
-that line, not just a data-shape exercise.
+The genuinely new part is the resource envelope, especially `subject` —
+this tool has been deliberately PHI-free since task 8 ("extracting
+anything beyond the karyotype string itself... is out of scope"), and
+populating a real Patient reference is a real step across that line,
+not just a data-shape exercise.
 
 **Done when**:
-- A parsed, error-free clone can be exported as a FHIR `Observation`
-  JSON matching CIBMTR's Cytogenetics profile shape (`Variant ISCN`
-  component = the validated raw ISCN string; `genomic source class` =
-  Somatic; `method` inferred from clone type — karyotype vs FISH-only vs
-  combined).
+- A parsed, error-free clone can be exported as FHIR JSON matching
+  mCODE's Genomic Variant / Genomics Report profile shape (ISCN
+  component = the validated raw ISCN string, reusing the LOINC codes
+  above where they fit mCODE's actual element definitions; genomic
+  source class = Somatic; method inferred from clone type — karyotype
+  vs FISH-only vs combined).
 - If a PDF was the source, candidate `subject`/demographic fields
   (patient name, DOB, specimen ID, collection/report date) are extracted
   the same structural way karyotype candidates already are, and shown
@@ -253,20 +285,22 @@ that line, not just a data-shape exercise.
   cannot be exported without an explicit override — the tool's own
   validation becomes a pre-export QC gate, not bypassed silently.
 - No data is persisted server-side and no network call is made to
-  CIBMTR or anywhere else — this is a local "produce the JSON, let the
-  user save/copy it" feature, same trust boundary the tool has always
-  had.
+  mCODE, CIBMTR, or anywhere else — this is a local "produce the JSON,
+  let the user save/copy it" feature, same trust boundary the tool has
+  always had.
 
-**Out of scope**: actual submission via CIBMTR's Direct FHIR API
-(stage 2 — needs real OAuth2/OIDC credentials issued per transplant
-center, and its own explicit go/no-go decision); any server-side
-storage of extracted patient data; decomposing the ISCN string into
-CIBMTR FHIR elements beyond what their own profile actually asks for —
-they want the raw string, so this tool's finer-grained internal
-`Finding` structure doesn't need to be re-modeled into FHIR at all;
-supporting FHIR profiles/resources beyond the Cytogenetics Observation
-(e.g. full Patient/Specimen resources) unless CIBMTR's profile actually
-requires them as separate resources rather than reference stubs.
+**Out of scope**: actual submission anywhere, including CIBMTR's Direct
+FHIR API (needs real OAuth2/OIDC credentials issued per institution,
+and its own explicit go/no-go decision); a CIBMTR-specific adapter/thin
+wrapper on top of the mCODE output (worth revisiting if CIBMTR's own
+FHIR pathway is later confirmed actually live, but not now); any
+server-side storage of extracted patient data; decomposing the ISCN
+string into finer-grained FHIR elements than mCODE's own profile asks
+for — this tool's internal `Finding` structure doesn't need to be
+re-modeled into FHIR; supporting FHIR profiles/resources beyond the
+genomics observation(s) themselves (e.g. full Patient/Specimen
+resources) unless mCODE's profile actually requires them as separate
+resources rather than reference stubs.
 
 ---
 
