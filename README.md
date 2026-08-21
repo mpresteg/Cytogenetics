@@ -103,7 +103,7 @@ different frontend later) are at **http://127.0.0.1:8000/docs**.
 ## A note on testing
 
 `iscn_parser.py`'s logic is covered by the automated suite described below
-(149 tests, run on every push/PR by CI). Beyond that, every feature in this
+(155 tests, run on every push/PR by CI). Beyond that, every feature in this
 tool has also been verified live — the actual FastAPI server launched, the
 actual UI driven in a browser, against both synthetic fixtures and real
 (de-identified) lab report PDFs — not just unit-tested in isolation. If
@@ -295,6 +295,22 @@ clause, or end of string) — a structural signal from ISCN grammar
 itself, not a guess about what looks like prose, and it never alters a
 single character of the actual candidate, only narrows where it ends.
 
+A normal (no-abnormality) result often has no `[N]` cell count at all
+on its karyotype line, so a candidate can hit this same glued-label
+quirk with no bracket for that fix to anchor on — confirmed against a
+third real report, whose normal-result line reads `"46,XX ; FEMALE
+KARYOTYPEResults:"`. `_trim_trailing_known_label()` covers this case:
+a small, evidence-based vocabulary of real report-section header words
+(the same list `find_lab_interpretation()`'s terminator list below
+already uses) glued with *zero* whitespace onto the very end of a
+candidate is trimmed off; a real space before the label — an ordinary
+standalone section header, or genuine trailing prose that happens to
+contain one of these words — is left completely alone. That's
+deliberately narrower than trimming *all* trailing prose: the leftover
+`"46,XX ; FEMALE KARYOTYPE"` in that example is the report's own
+human-authored gloss, not a machine artifact, so it's left for the
+parser's normal error/warning UI to surface, not guessed away.
+
 **Case-level clinical assessment:** every parse also returns a top-level
 `assessment` (`assess_case()` in `iscn_parser.py`) that rolls the case's
 findings up into one plain-English summary, plus an explicit flag when a
@@ -401,7 +417,7 @@ back to PIL's default only if neither is installed.
 Four modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 107 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 111 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)
@@ -432,7 +448,7 @@ pytest-discoverable if that's your preferred runner:
   no karyotype content returns no candidates, and — the routing decision
   itself — a normal text-layer PDF takes the text path, not OCR, even
   though both code paths exist side by side.
-- `test_fhir_export.py` — 36 tests, zero dependencies beyond the stdlib.
+- `test_fhir_export.py` — 38 tests, zero dependencies beyond the stdlib.
   Covers: subject/demographic field extraction from PDF text (each
   labeled field, alternate label wording, no false-positive match on an
   unrelated label like "Physician Name:", and task 26's reversed
@@ -461,7 +477,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-149 tests total, all passing — verified locally and independently by CI
+155 tests total, all passing — verified locally and independently by CI
 on every push, not just claimed to pass.
 
 ## Working on this repo

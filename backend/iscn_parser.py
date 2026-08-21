@@ -1067,6 +1067,49 @@ def _trim_trailing_garbage(candidate: str) -> str:
     return candidate
 
 
+# Small, explicit vocabulary of real report-section-header words this
+# project has already confirmed recurring across real reports (the same
+# list find_lab_interpretation()'s LAB_INTERPRETATION_TERMINATOR_RE uses
+# below, plus task 22's own "abnormal results" instance, which already
+# contains "results" as a substring so isn't listed separately) — a
+# structural signal (these are real, recurring section labels, not a
+# guess about arbitrary content), not a general "any capitalized word"
+# rule, which would risk false-triggering on ordinary report prose.
+_TRAILING_LABEL_RE = re.compile(
+    r'(?<=\S)(?:signature|results|cultures|karyotypes|fish images|cpt codes)\s*:\s*$',
+    re.IGNORECASE,
+)
+
+
+def _trim_trailing_known_label(candidate: str) -> str:
+    """Truncates `candidate` right before a known report-section label
+    (see `_TRAILING_LABEL_RE`) glued directly (zero whitespace — the
+    `(?<=\\S)` lookbehind) onto its end. Confirmed against a second real
+    report from the same software family as `_trim_trailing_garbage`
+    above: its normal-result line reads
+    "46,XX ; FEMALE KARYOTYPEResults:" — the section's own "Results:"
+    label glued straight onto the end with zero separator, same quirk,
+    just with no "[N]" cell count for that function to anchor on (a
+    clean/normal karyotype has no cell count to report), so it was a
+    no-op there.
+
+    Deliberately narrower than trimming everything after the sex
+    chromosomes, or any other guess about where "real" content ends —
+    this only recognizes a *known* label, glued with *zero* separator,
+    at the very end of the candidate. A label preceded by a real space
+    (a standalone section header on its own effective content) or
+    genuine trailing prose that happens to mention one of these words
+    with normal spacing is left completely alone, same as any other
+    trailing prose this tool has always declined to guess at (see
+    test_captures_rest_of_line_without_correction) — the remaining
+    content, if any, still gets the parser's normal error/warning
+    treatment, never silently dropped."""
+    m = _TRAILING_LABEL_RE.search(candidate)
+    if m:
+        return candidate[:m.start()].rstrip()
+    return candidate
+
+
 def _looks_like_section_boundary(line: str) -> bool:
     """True if `line` looks like a standalone report section header
     (e.g. "CULTURES", "COMMENT", "SIGNATURE") rather than more
@@ -1108,6 +1151,7 @@ def find_candidate_iscn_lines(text: str) -> List[str]:
             candidate = candidate.rstrip() + _continuation_separator(candidate) + lines[i].strip()
             i += 1
             continuations += 1
+        candidate = _trim_trailing_known_label(candidate)
         candidate = _trim_trailing_garbage(candidate)
         if candidate:
             candidates.append(candidate)

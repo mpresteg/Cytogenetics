@@ -68,6 +68,18 @@ class TestSubjectCandidateExtraction(unittest.TestCase):
         self.assertEqual(c["collection_date"], "2024-02-02")
         self.assertEqual(c["report_date"], "2024-02-09")
 
+    def test_reported_date_word_order(self):
+        # "Reported Date:" (adjective+noun) is a distinct real label from
+        # "Report Date:" (noun phrase) -- confirmed against a second real
+        # report (Sample-Normal-POC-Cyto-Report.pdf) that uses this exact
+        # wording, in both label orders.
+        self.assertEqual(
+            extract_subject_candidates("Reported Date: 01/14/2016\n")["report_date"],
+            "01/14/2016")
+        self.assertEqual(
+            extract_subject_candidates("01/14/2016Reported Date:\n")["report_date"],
+            "01/14/2016")
+
     def test_does_not_match_unrelated_labels(self):
         # "Physician Name:" and "Ordering Facility:" should not be
         # mistaken for the patient's own name/specimen fields.
@@ -86,6 +98,30 @@ class TestSubjectCandidateExtraction(unittest.TestCase):
         c = extract_subject_candidates(text)
         self.assertEqual(c["specimen_id"], "XX-XXXX")
         self.assertEqual(c["collection_date"], "11/08/2016")
+
+    def test_real_second_report_mixes_forward_and_reversed_labels(self):
+        # A different real report (Sample-Normal-POC-Cyto-Report.pdf,
+        # task 26's bug report follow-up) -- same report-software family
+        # as task 22's, but this one mixes BOTH label orders in the same
+        # document: patient name/DOB are forward ("Label: value"),
+        # specimen ID/collection date are reversed ("value" glued
+        # directly onto "Label:"). Both orders need to work independently
+        # within one document, not just one or the other globally.
+        text = (
+            "Patient Name: SAMPLE, JANET\n"
+            "Date of Birth: 03/16/1984\n"
+            "Sex: Female\n"
+            "XX-XXXXXXXCust. Specimen ID:\n"
+            "01/06/2016Collection Date:\n"
+            "01/07/2016Received Date:\n"
+            "01/14/2016Reported Date:\n"
+        )
+        c = extract_subject_candidates(text)
+        self.assertEqual(c["patient_name"], "SAMPLE, JANET")
+        self.assertEqual(c["date_of_birth"], "03/16/1984")
+        self.assertEqual(c["specimen_id"], "XX-XXXXXXX")
+        self.assertEqual(c["collection_date"], "01/06/2016")
+        self.assertEqual(c["report_date"], "01/14/2016")
 
     def test_reversed_date_before_label_all_date_fields(self):
         text = (

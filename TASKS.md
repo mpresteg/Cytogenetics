@@ -215,6 +215,62 @@ as blocked/under-review, not "resolved" preemptively.
 
 ## Done
 
+### 27. Known report-section label glued onto a bracket-less karyotype candidate
+
+**Context**: Bug report from live use with a third real (de-identified)
+report, `Sample-Normal-POC-Cyto-Report.pdf` — a *normal* result (no
+abnormalities, no `[N]` cell count on the karyotype line at all).
+`find_candidate_iscn_lines()` returned `"46,XX ; FEMALE
+KARYOTYPEResults:"`, which then failed with `'XX ; FEMALE
+KARYOTYPEResults:' is not a valid sex chromosome constitution`.
+Confirmed against the real PDF's own `extract_text()` output: same
+report-software family as task 22/26 (also emits `"XX-XXXXXXXCust.
+Specimen ID:"`, `"01/06/2016Collection Date:"` on this document), same
+"value glued directly onto Label:" quirk — just landing on a karyotype
+line with no bracket for `_trim_trailing_garbage()` (task 22) to anchor
+on, so that fix was a no-op here.
+
+First attempt (reverted): trim anything that isn't a comma or `[`
+immediately after the sex-chromosome letters. Wrong — it also trimmed
+*genuine* trailing prose with normal spacing (`"46,XY normal male
+karyotype, no abnormality detected."`, already an established, deliberately-out-of-scope
+case — see `test_captures_rest_of_line_without_correction`) and broke
+the combined karyotype+FISH form (`"."` is a legal continuation there,
+which the first attempt didn't allow for). Caught by the existing test
+suite before this ever shipped.
+
+**Done when**: the karyotype line correctly loses only the
+machine-glued section label (`"Results:"` here), the same way task 22's
+fix already strips a bracket-anchored one — without touching genuine
+human-authored trailing prose (still left for the parser's own
+error/warning UI to surface, not silently guessed at or dropped), and
+without breaking any legal ISCN continuation (`/`, `.`, more
+comma-separated tokens).
+
+**Out of scope**: recognizing `" ; FEMALE KARYOTYPE"` / `" ; MALE
+KARYOTYPE"` itself as a template phrase safe to also strip — only one
+real report has been seen using it so far; hard-coding a rule from a
+single example would be a guess, not a confirmed structural signal.
+This candidate still surfaces a "needs review" error after this fix,
+which is correct and honest, not the bug this task fixes.
+
+Done: new `_trim_trailing_known_label()` in `iscn_parser.py`, using the
+same small, evidence-based vocabulary of real report-section headers
+`find_lab_interpretation()`'s terminator list already established
+(signature, results, cultures, karyotypes, fish images, cpt codes) —
+trims a candidate right before one of these words, glued with *zero*
+whitespace, at the very end. The zero-whitespace requirement (a regex
+lookbehind) is what keeps genuine prose and standalone section headers
+(a real space before the label) untouched. Also fixed, found testing
+the same PDF end-to-end through `/api/extract-pdf`: `fhir_export.py`'s
+`report_date` patterns only recognized "Report Date" and "Date
+Reported" — this report uses "Reported Date" (a third, distinct word
+order), so subject-field pre-fill was silently missing that one field
+even after task 26. 6 new tests (155 total, all passing), including the
+exact confirmed real fragments from this report, verified end-to-end
+through the actual `/api/extract-pdf` and `/api/parse` endpoints, not
+just the pure functions in isolation.
+
 ### 26. Subject-field extraction missed task 22's real report's reversed label format
 
 **Context**: Bug report from live use of task 25's subject-field
