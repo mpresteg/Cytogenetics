@@ -209,6 +209,49 @@ class TestDerivativeDecomposition(unittest.TestCase):
         self.assertIn("xyz123", f["interpretation"])
         self.assertTrue(any("wasn't recognized" in w for w in f["warnings"]))
 
+    def test_der_chained_translocations(self):
+        # Task 1: a single derivative chromosome shaped by two separate
+        # translocation events, e.g. a real-world der(9) formed by a
+        # 9;22 event and a later, independent 9;11 event.
+        # SUB_EVENT_RE already finds both via finditer() -- this
+        # confirms the interpretation text and leftover-detection
+        # actually handle two consumed spans correctly, not just one.
+        r = parse_iscn("46,XY,der(9)t(9;22)(q34;q11.2)t(9;11)(p13;q14)")
+        f = first_finding(r)
+        self.assertEqual(f["abbreviation"], "der")
+        self.assertEqual(f["chromosomes"], ["9"])
+        # Both sub-events present, in order.
+        first_idx = f["interpretation"].find("22 at q11.2")
+        second_idx = f["interpretation"].find("11 at q14")
+        self.assertNotEqual(first_idx, -1)
+        self.assertNotEqual(second_idx, -1)
+        self.assertLess(first_idx, second_idx)
+        # Fully decomposed -- no spurious "not decomposed" leftover warning.
+        self.assertFalse(any("not decomposed" in w for w in f["warnings"]))
+
+    def test_der_chained_translocation_and_deletion(self):
+        # Different event types chained (not just two t()s), and confirms
+        # each sub-event's own warnings (here, del()'s breakpoint-order
+        # check) still surface on the combined der() Finding.
+        r = parse_iscn("46,XY,der(1)t(1;3)(p36;q21)del(1)(p36p22)")
+        f = first_finding(r)
+        self.assertIn("Translocation", f["interpretation"])
+        self.assertIn("Deletion", f["interpretation"])
+        self.assertFalse(any("not decomposed" in w for w in f["warnings"]))
+        self.assertTrue(any("proximal breakpoint first" in w for w in f["warnings"]))
+
+    def test_der_chain_with_unrecognized_content_between_events(self):
+        # An unrecognized token sandwiched between two valid, chained
+        # sub-events -- both real sub-events must still be decomposed
+        # (not just the first one found before the gap), and the
+        # sandwiched content reported as leftover, never silently dropped.
+        r = parse_iscn("46,XY,der(9)t(9;22)(q34;q11.2)foo(bar)t(9;11)(p13;q14)")
+        f = first_finding(r)
+        self.assertIn("22 at q11.2", f["interpretation"])
+        self.assertIn("11 at q14", f["interpretation"])
+        self.assertIn("foo(bar)", f["interpretation"])
+        self.assertTrue(any("wasn't recognized" in w for w in f["warnings"]))
+
 
 class TestMosaicism(unittest.TestCase):
     def test_two_clones_with_cell_counts(self):
