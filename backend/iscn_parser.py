@@ -799,6 +799,19 @@ def _any_of(*matchers):
 # a single defining lesion, so it's cited to its own, more accurate
 # source (the IPSS-R cytogenetic risk scoring system for MDS) instead of
 # the WHO-classification framing that fits the fusion-defined entries.
+#
+# Task 24 grew the table further by cross-checking it against what
+# CIBMTR's own Disease Classification form (2402) asks transplant
+# centers to report — a second, independent signal (real-world data-
+# collection practice, not just the WHO text) for which findings are
+# considered worth standardizing a field for. Each addition is cited to
+# its own accurate primary source below, not just tagged "CIBMTR," since
+# a form field confirms something is *tracked*, not why it matters
+# clinically. The CLL entries (del(17p)/del(11q)/+12/del(13q)) are the
+# first in this table for a lymphoid-not-myeloid leukemia; del(17p) in
+# particular is deliberately worded to note it's not CLL-specific (TP53
+# loss is adverse across CLL, MDS, and AML alike), unlike del(11q)/+12/
+# del(13q), which are more specifically characteristic of CLL.
 MALIGNANCY_KNOWLEDGE = [
     (_chrom_set_matcher({"9", "22"}, count=2),
      "t(9;22) — BCR-ABL1",
@@ -838,6 +851,52 @@ MALIGNANCY_KNOWLEDGE = [
      "(MDS, AML, MPN) — a scored cytogenetic risk category in the IPSS-R "
      "for MDS (Greenberg, Tuechler, Schanz et al., Blood 120:2454, 2012), "
      "rather than a single defining fusion event."),
+    (_single_chrom_matcher("del", "17"),
+     "del(17p)",
+     "TP53 region loss — one of the most consistently adverse cytogenetic "
+     "findings across chronic lymphocytic leukemia (CLL), MDS, and AML "
+     "alike, not specific to any one of them (Döhner et al., N Engl J Med "
+     "343:1910, 2000)."),
+    (_single_chrom_matcher("del", "11"),
+     "del(11q)",
+     "ATM region loss — recurrently associated with a poor-prognosis "
+     "subset of chronic lymphocytic leukemia (CLL) (Döhner et al., N Engl "
+     "J Med 343:1910, 2000)."),
+    (_single_chrom_matcher("+", "12", category="numerical"),
+     "+12 (trisomy 12)",
+     "Recurrently associated with chronic lymphocytic leukemia (CLL), "
+     "intermediate prognosis in the Döhner hierarchy (Döhner et al., "
+     "N Engl J Med 343:1910, 2000)."),
+    (_single_chrom_matcher("del", "13"),
+     "del(13q)",
+     "The most common cytogenetic finding in chronic lymphocytic leukemia "
+     "(CLL) — favorable prognosis when it's the sole abnormality (Döhner "
+     "et al., N Engl J Med 343:1910, 2000)."),
+    (_chrom_set_matcher({"8", "14"}, count=2),
+     "t(8;14) — MYC-IGH",
+     "The most common of Burkitt lymphoma's three MYC-partner "
+     "translocations (~80% of cases)."),
+    (_chrom_set_matcher({"2", "8"}, count=2),
+     "t(2;8) — MYC-IGK",
+     "One of Burkitt lymphoma's three MYC-partner translocations, a less "
+     "common variant of t(8;14)."),
+    (_chrom_set_matcher({"8", "22"}, count=2),
+     "t(8;22) — MYC-IGL",
+     "One of Burkitt lymphoma's three MYC-partner translocations, a less "
+     "common variant of t(8;14)."),
+    (_chrom_set_matcher({"4", "11"}, count=2),
+     "t(4;11) — KMT2A-AFF1",
+     "Recurrently associated with high-risk B-lymphoblastic leukemia "
+     "(B-ALL), particularly in infants; one specific, well-characterized "
+     "partner of KMT2A (MLL) rearrangements, which have many other "
+     "possible partners not covered by this entry."),
+    (_chrom_set_matcher({"1", "19"}, count=2),
+     "t(1;19) — TCF3-PBX1",
+     "Recurrently associated with B-lymphoblastic leukemia (B-ALL)."),
+    (_single_chrom_matcher("del", "20"),
+     "del(20q)",
+     "Recurrently associated with myelodysplastic syndrome (MDS) and "
+     "myeloproliferative neoplasms (MPN)."),
 ]
 
 

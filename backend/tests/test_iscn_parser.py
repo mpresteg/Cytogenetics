@@ -471,6 +471,75 @@ class TestClinicalAssessment(unittest.TestCase):
         # Correctly attributed to the abnormal clone, not the normal one.
         self.assertEqual(a["matches"][0]["clone_index"], 0)
 
+    # task 24: CLL panel (Döhner et al., Blood/NEJM 2000 hierarchy) --
+    # del(17p) worst, del(11q) poor, +12 intermediate, del(13q) favorable
+    # when isolated. Not previously represented in the table at all.
+    def test_del_17p_flags(self):
+        r = parse_iscn("46,XX,del(17)(p12p13)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("del(17p)" in m["label"] for m in a["matches"]))
+
+    def test_del_11q_flags(self):
+        r = parse_iscn("46,XX,del(11)(q22q23)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("del(11q)" in m["label"] for m in a["matches"]))
+
+    def test_trisomy_12_flags(self):
+        r = parse_iscn("47,XY,+12")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("+12" in m["label"] for m in a["matches"]))
+
+    def test_del_13q_flags(self):
+        r = parse_iscn("46,XX,del(13)(q14q14)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("del(13q)" in m["label"] for m in a["matches"]))
+
+    # task 24: Burkitt lymphoma's three MYC-partner translocation variants.
+    def test_myc_igh_translocation_flags(self):
+        r = parse_iscn("46,XY,t(8;14)(q24;q32)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("t(8;14)" in m["label"] for m in a["matches"]))
+
+    def test_myc_igk_translocation_flags(self):
+        r = parse_iscn("46,XY,t(2;8)(p12;q24)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("t(2;8)" in m["label"] for m in a["matches"]))
+
+    def test_myc_igl_translocation_flags(self):
+        r = parse_iscn("46,XY,t(8;22)(q24;q11)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("t(8;22)" in m["label"] for m in a["matches"]))
+
+    # task 24: two more B-ALL-associated translocations flagged by CIBMTR's
+    # own disease-classification form, alongside t(9;22)/t(12;21) already
+    # in the table.
+    def test_kmt2a_translocation_flags(self):
+        r = parse_iscn("46,XY,t(4;11)(q21;q23)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("t(4;11)" in m["label"] for m in a["matches"]))
+
+    def test_tcf3_pbx1_translocation_flags(self):
+        r = parse_iscn("46,XY,t(1;19)(q23;p13)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("t(1;19)" in m["label"] for m in a["matches"]))
+
+    # task 24: del(20q), an MDS/MPN-recurrent deletion alongside del(5q)
+    # and -7/del(7q) already in the table.
+    def test_del_20q_flags(self):
+        r = parse_iscn("46,XY,del(20)(q11q13)")
+        a = r["assessment"]
+        self.assertTrue(a["flagged"])
+        self.assertTrue(any("del(20q)" in m["label"] for m in a["matches"]))
+
     def test_normal_karyotype_not_flagged(self):
         r = parse_iscn("46,XY")
         a = r["assessment"]
