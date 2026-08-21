@@ -215,6 +215,44 @@ as blocked/under-review, not "resolved" preemptively.
 
 ## Done
 
+### 26. Subject-field extraction missed task 22's real report's reversed label format
+
+**Context**: Bug report from live use of task 25's subject-field
+pre-fill, right after merging: on a real PDF upload, none of the
+subject fields (name, DOB, specimen ID, etc.) populated. Task 25's
+`extract_subject_candidates()` only matched the "Label: value" order.
+Task 22 had already confirmed, against this exact report's own
+`extract_text()` output, that its report-generation software
+(Diagnostic Cytogenetics Incorporated's template) glues the *value*
+immediately before its own label with zero separator throughout its
+whole text layer — `"XX-XXXXCust. Specimen ID:"`,
+`"11/08/2016Collection Date:"` — the reverse of what task 25's patterns
+assumed. Task 22 handled this for the karyotype candidate line itself;
+task 25 didn't carry that same lesson over to the new subject-field
+scanner it added on top of the same document text.
+
+**Done when**: `extract_subject_candidates()` finds each subject field
+in both label orders on this exact confirmed real report, without
+introducing new false positives on ordinary prose.
+
+**Out of scope**: a fully general "any label can be reversed anywhere"
+parser — the date and specimen-ID fields anchor the reversed match on
+an unambiguous value shape (a date, or an alnum/dash token), which is a
+real structural signal; patient name has no such shape, so its reversed
+match is a documented heuristic (1-4 capitalized word tokens
+immediately before the label), not a hard guarantee — acceptable here
+specifically because every subject field is already a review-before-use
+candidate, never applied to an export unconfirmed.
+
+Done: each field in `_SUBJECT_FIELD_PATTERNS` (`fhir_export.py`) is now
+a list of patterns tried in order — the existing forward "Label: value"
+pattern first, then a new reversed "value immediately before Label:"
+pattern as a fallback. Verified against the exact confirmed real
+fragments from task 22 (`"XX-XXXXCust. Specimen ID:"`,
+`"11/08/2016Collection Date:"`) via a synthetic PDF run through the
+actual `/api/extract-pdf` endpoint, not just the pure function in
+isolation. 13 new tests (149 total, all passing).
+
 ### 25. Export a parsed report as an mCODE-shaped FHIR genomics resource (stage 1)
 
 **Context**: The long-term goal is using this tool's output to help

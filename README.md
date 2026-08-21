@@ -103,7 +103,7 @@ different frontend later) are at **http://127.0.0.1:8000/docs**.
 ## A note on testing
 
 `iscn_parser.py`'s logic is covered by the automated suite described below
-(144 tests, run on every push/PR by CI). Beyond that, every feature in this
+(149 tests, run on every push/PR by CI). Beyond that, every feature in this
 tool has also been verified live — the actual FastAPI server launched, the
 actual UI driven in a browser, against both synthetic fixtures and real
 (de-identified) lab report PDFs — not just unit-tested in isolation. If
@@ -366,10 +366,14 @@ pre-export QC gate, not bypassed silently; the UI surfaces an explicit
 Subject/demographic fields (patient name, DOB, specimen ID,
 collection/report date) are optional and, when a PDF was the source,
 pre-filled from `extract_subject_candidates()` scanning for a small set
-of labeled fields ("Patient:", "DOB:", "Specimen ID:", etc.) — always
-editable, never auto-included without being visibly present in the form
-first, same review discipline as karyotype candidates get. Every export
-response also carries a `caveats` list naming the specific elements this
+of labeled fields, in either order — "Patient: John Smith" as well as
+the reversed "John SmithPatient:" some report-generation software emits
+with zero separator (the same real-report quirk task 22 found for the
+karyotype line itself; task 26 extended the same handling to this
+scanner) — always editable, never auto-included without being visibly
+present in the form first, same review discipline as karyotype
+candidates get. Every export response also carries a `caveats` list
+naming the specific elements this
 prototype couldn't verify against mCODE's exact spec this round (e.g.
 `method`'s coded value) — shown to the user alongside the JSON rather
 than silently asserted as spec-confirmed. Nothing is persisted
@@ -428,10 +432,12 @@ pytest-discoverable if that's your preferred runner:
   no karyotype content returns no candidates, and — the routing decision
   itself — a normal text-layer PDF takes the text path, not OCR, even
   though both code paths exist side by side.
-- `test_fhir_export.py` — 31 tests, zero dependencies beyond the stdlib.
+- `test_fhir_export.py` — 36 tests, zero dependencies beyond the stdlib.
   Covers: subject/demographic field extraction from PDF text (each
   labeled field, alternate label wording, no false-positive match on an
-  unrelated label like "Physician Name:"), date normalization (ISO
+  unrelated label like "Physician Name:", and task 26's reversed
+  "value immediately before Label:" order — confirmed against the exact
+  real report fragments task 22 already found), date normalization (ISO
   passthrough, US slash/dash format, rejecting anything ambiguous), the
   mCODE bundle shape itself (`DiagnosticReport` + one `Observation` per
   clone, `result` references matching every Observation, the ISCN and
@@ -455,7 +461,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-144 tests total, all passing — verified locally and independently by CI
+149 tests total, all passing — verified locally and independently by CI
 on every push, not just claimed to pass.
 
 ## Working on this repo
