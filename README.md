@@ -103,7 +103,7 @@ different frontend later) are at **http://127.0.0.1:8000/docs**.
 ## A note on testing
 
 `iscn_parser.py`'s logic is covered by the automated suite described below
-(154 tests, run on every push/PR by CI). Beyond that, every feature in this
+(157 tests, run on every push/PR by CI). Beyond that, every feature in this
 tool has also been verified live — the actual FastAPI server launched, the
 actual UI driven in a browser, against both synthetic fixtures and real
 (de-identified) lab report PDFs — not just unit-tested in isolation. If
@@ -422,7 +422,7 @@ back to PIL's default only if neither is installed.
 Four modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 110 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 113 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)
@@ -482,7 +482,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-154 tests total, all passing — verified locally and independently by CI
+157 tests total, all passing — verified locally and independently by CI
 on every push, not just claimed to pass.
 
 ## Working on this repo

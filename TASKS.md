@@ -76,30 +76,6 @@ at the bottom of `## Backlog` following the same three-field format.
 
 ## Backlog
 
-### 1. Multi-step der() chains
-
-**Context**: `_decompose_der_body()` and `interpret_derivative_single()` in
-`backend/iscn_parser.py`. Currently decomposes a *single* embedded
-rearrangement inside `der()`, e.g. `der(9)t(9;22)(q34;q11.2)`. Real reports
-sometimes chain two, e.g. `der(9)t(9;22)(q34;q11.2)t(9;11)(p13;q14)` — a
-chromosome 9 derivative shaped by two separate translocation events.
-`SUB_EVENT_RE` already finds all embedded events via `finditer`, so the
-sub-finding *list* should already come back with two entries — the gap is
-likely in how the interpretation text and leftover-detection handle three+
-consumed spans, and this needs a test to confirm either way.
-
-**Done when**: `der(9)t(9;22)(q34;q11.2)t(9;11)(p13;q14)` parses to a single
-`Finding` with `category: "structural"`, two sub-events reflected in the
-interpretation text (in order), and no spurious "not decomposed" warning.
-At least 2 new test cases in `TestDerivativeDecomposition`.
-
-**Out of scope**: der() chains mixing more than two event types, or der()
-built from three-or-more source chromosomes — flag those as a follow-up
-task rather than solving them here.
-
----
-
-
 ### 3. Grow PROBE_KNOWLEDGE / FUSION_KNOWLEDGE
 
 **Context**: `PROBE_KNOWLEDGE` and `FUSION_KNOWLEDGE` dicts in
@@ -214,6 +190,29 @@ as blocked/under-review, not "resolved" preemptively.
 *(none)*
 
 ## Done
+
+### 1. Multi-step der() chains
+
+**Context**: `_decompose_der_body()` and `interpret_derivative_single()`
+decompose embedded rearrangements inside `der()`, e.g.
+`der(9)t(9;22)(q34;q11.2)`. Real reports sometimes chain two events,
+e.g. `der(9)t(9;22)(q34;q11.2)t(9;11)(p13;q14)` — unconfirmed whether
+the interpretation text and leftover-detection actually handled more
+than one consumed span correctly, since `SUB_EVENT_RE` already finds
+all embedded events via `finditer` but nothing tested more than one.
+
+**Done when**: `der(9)t(9;22)(q34;q11.2)t(9;11)(p13;q14)` parses to a
+single `Finding` with two sub-events reflected in the interpretation
+text, in order, no spurious "not decomposed" warning. At least 2 new
+tests in `TestDerivativeDecomposition`.
+
+Done: turned out to already work correctly — no code change needed,
+just the missing test coverage. Confirmed by hand first (two chained
+events, a mixed translocation+deletion chain, three chained events,
+and an unrecognized token sandwiched between two valid chained events
+all decompose/interpret correctly with no regression to the
+single-event case) before writing it up as tests. 3 new tests (157
+total, all passing).
 
 ### 27. Recognize a top-level ";" as an ISCN terminator
 
