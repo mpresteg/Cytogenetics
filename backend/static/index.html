@@ -68,6 +68,37 @@
       <div id="ocr-review-panel" class="ocr-review-panel" hidden></div>
     </section>
 
+    <section class="subject-section">
+      <p class="eyebrow">Subject fields · FHIR export (optional)</p>
+      <p class="subject-hint">
+        Only needed if you plan to export a parsed result as FHIR
+        (mCODE-shaped, task 25). Pre-filled from a PDF upload where a
+        labeled field was found — always <strong>review and correct
+        before exporting</strong>, nothing here is auto-trusted. Leave
+        blank to export without a patient/specimen reference.
+      </p>
+      <div class="subject-grid">
+        <label>Patient name
+          <input type="text" id="subject-patient-name" autocomplete="off">
+        </label>
+        <label>Date of birth
+          <input type="date" id="subject-dob">
+          <span class="subject-raw-hint" id="subject-dob-hint"></span>
+        </label>
+        <label>Specimen ID
+          <input type="text" id="subject-specimen-id" autocomplete="off">
+        </label>
+        <label>Collection date
+          <input type="date" id="subject-collection-date">
+          <span class="subject-raw-hint" id="subject-collection-date-hint"></span>
+        </label>
+        <label>Report date
+          <input type="date" id="subject-report-date">
+          <span class="subject-raw-hint" id="subject-report-date-hint"></span>
+        </label>
+      </div>
+    </section>
+
     <section id="results"></section>
 
     <section class="coverage">
@@ -82,6 +113,7 @@
         <li><strong>FISH</strong><span>nuc ish(...) and ish(...) probe results — probe+, probe-, probeXN, fusion ("con"), amplification ("amp"), with reference notes for well-known probes</span></li>
         <li><strong>Validation</strong><span>modal number format, sex chromosome constitution, band format, a soft cross-check between the stated modal number and the numerical abnormalities listed, and approximate band-plausibility / breakpoint-order checks</span></li>
         <li><strong>Clinical assessment</strong><span>a case-level reference-table flag when findings match a small set of abnormalities recurrently associated with hematologic malignancy, or when ≥3 unrelated abnormalities appear in one clone ("complex karyotype") — always labeled as a reference note, never a diagnosis</span></li>
+        <li><strong>FHIR export</strong><span>export a parsed, error-free result as mCODE-shaped FHIR JSON (Genomic Variant / Genomics Report profiles) — subject/specimen fields are optional and only ever included after explicit review; nothing is persisted or sent anywhere</span></li>
       </ul>
       <p class="note">Anything not listed above (e.g. uncertainty markers like "?", some complex multi-step rearrangements) is flagged as <em>unrecognized</em> rather than guessed at. The edition selector is a scaffold — only a couple of illustrative edition-specific notes are wired up so far; see the README.</p>
     </section>

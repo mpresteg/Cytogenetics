@@ -15,6 +15,12 @@ from iscn_parser import (
     SUPPORTED_EDITIONS,
     DEFAULT_EDITION,
 )
+from fhir_export import (
+    build_mcode_export,
+    extract_subject_candidates,
+    normalize_date,
+    FhirExportError,
+)
 
 app = FastAPI(title="ISCN Validator & Interpreter")
 
@@ -34,6 +40,42 @@ class ParseRequest(BaseModel):
 @app.post("/api/parse")
 def parse(req: ParseRequest):
     return parse_iscn(req.iscn, edition=req.edition)
+
+
+# task 25, stage 1: export a parsed report as mCODE-shaped FHIR JSON —
+# see fhir_export.py for the full rationale and what's verified vs. not.
+# Re-parses `iscn` server-side rather than trusting a client-supplied
+# parse result, for the same reason /api/parse itself is stateless: no
+# server-side session to reference a prior parse by ID, and re-parsing
+# is cheap and guarantees the export always reflects what this tool's
+# own validation actually found for that exact string, not a stale or
+# tampered copy of it.
+class SubjectFields(BaseModel):
+    patient_name: str = ""
+    date_of_birth: str = ""
+    specimen_id: str = ""
+    collection_date: str = ""
+    report_date: str = ""
+
+
+class ExportFhirRequest(BaseModel):
+    iscn: str
+    edition: str = DEFAULT_EDITION
+    subject: SubjectFields = SubjectFields()
+    # Set only after the user has explicitly acknowledged that this tool
+    # flagged one or more clones (errors, or an unrecognized token) and
+    # chosen to export anyway — see build_mcode_export()'s pre-export QC
+    # gate. Never set by default.
+    override: bool = False
+
+
+@app.post("/api/export-fhir")
+def export_fhir(req: ExportFhirRequest):
+    parsed = parse_iscn(req.iscn, edition=req.edition)
+    try:
+        return build_mcode_export(parsed, req.subject.model_dump(), override=req.override)
+    except FhirExportError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 # task 11: below this many non-whitespace characters, a page's embedded
@@ -107,7 +149,20 @@ async def extract_pdf(file: UploadFile = File(...)):
         if source == "ocr":
             used_ocr = True
 
-    lab_interpretation = find_lab_interpretation("\n".join(full_text_parts))
+    full_text = "\n".join(full_text_parts)
+    lab_interpretation = find_lab_interpretation(full_text)
+
+    # task 25: candidate subject/demographic fields (patient name, DOB,
+    # specimen ID, collection/report date) for the FHIR export form —
+    # same "surface for review, never auto-apply" discipline as the
+    # karyotype candidates above. `_normalized` gives each date field's
+    # best-effort ISO form too, purely to best-effort pre-fill the
+    # frontend's <input type="date"> fields; the raw extracted text is
+    # always included as well, in case normalization failed or looks
+    # wrong, so nothing found in the PDF is silently dropped.
+    subject_candidates = extract_subject_candidates(full_text)
+    for date_field in ("date_of_birth", "collection_date", "report_date"):
+        subject_candidates[f"{date_field}_normalized"] = normalize_date(subject_candidates[date_field])
 
     return {
         "filename": file.filename,
@@ -120,6 +175,7 @@ async def extract_pdf(file: UploadFile = File(...)):
         # caveat to that text specifically, same discipline as OCR'd
         # candidates already get.
         "lab_interpretation_used_ocr": bool(lab_interpretation) and used_ocr,
+        "subject_candidates": subject_candidates,
     }
 
 

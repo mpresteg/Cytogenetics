@@ -566,6 +566,136 @@ select {
 
 .placeholder { color: var(--muted); font-style: italic; }
 
+/* ---------- Subject fields (task 25: FHIR export) ---------- */
+
+.subject-section {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 28px;
+  box-shadow: 0 1px 2px rgba(16, 21, 28, 0.04);
+}
+
+.subject-hint {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  max-width: 68ch;
+}
+
+.subject-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px 20px;
+}
+
+.subject-grid label { margin-bottom: 0; }
+
+input[type="text"], input[type="date"] {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-sunken);
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: normal;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input[type="text"]:focus, input[type="date"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+  background: var(--surface);
+}
+
+.subject-raw-hint {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ---------- FHIR export panel (task 25) ---------- */
+
+.export-panel {
+  margin: 14px 0;
+  padding: 14px 16px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.export-panel .export-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.export-panel .override-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--warn);
+}
+.export-panel .override-row label {
+  display: inline;
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--warn);
+}
+.export-panel .override-row input[type="checkbox"] { margin: 0; }
+
+.export-status {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.export-status.error { color: var(--unrecognized); }
+
+.export-caveats {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn);
+  border-radius: 7px;
+  font-size: 0.82rem;
+  color: var(--warn);
+}
+.export-caveats p { margin: 0 0 6px; font-weight: 600; }
+.export-caveats ul { margin: 0; padding-left: 18px; }
+
+.export-json {
+  margin-top: 10px;
+  max-height: 360px;
+  overflow: auto;
+  background: var(--ink);
+  color: #dce7ef;
+  padding: 12px;
+  border-radius: 7px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre;
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 560px) {
@@ -574,6 +704,7 @@ select {
   .controls { flex-direction: column; align-items: stretch; }
   .spacer { display: none; }
   .edition-label { margin-top: 4px; }
+  .subject-grid { grid-template-columns: 1fr; }
 }
 
 /* ---------- Reduced motion ---------- */
