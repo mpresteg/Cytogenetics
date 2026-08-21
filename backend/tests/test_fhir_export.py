@@ -76,6 +76,47 @@ class TestSubjectCandidateExtraction(unittest.TestCase):
         self.assertIsNone(c["patient_name"])
         self.assertIsNone(c["specimen_id"])
 
+    def test_reversed_value_before_label_real_report_fragments(self):
+        # Confirmed real extract_text() fragments from task 22's report
+        # (Diagnostic Cytogenetics Incorporated's template) -- this
+        # report-generation software glues the value immediately before
+        # its own label with zero separator throughout its whole text
+        # layer, not just on the karyotype line task 22 originally fixed.
+        text = "XX-XXXXCust. Specimen ID:\n11/08/2016Collection Date:\n"
+        c = extract_subject_candidates(text)
+        self.assertEqual(c["specimen_id"], "XX-XXXX")
+        self.assertEqual(c["collection_date"], "11/08/2016")
+
+    def test_reversed_date_before_label_all_date_fields(self):
+        text = (
+            "03/04/1975DOB:\n"
+            "01/02/2024Collection Date:\n"
+            "01/10/2024Report Date:\n"
+        )
+        c = extract_subject_candidates(text)
+        self.assertEqual(c["date_of_birth"], "03/04/1975")
+        self.assertEqual(c["collection_date"], "01/02/2024")
+        self.assertEqual(c["report_date"], "01/10/2024")
+
+    def test_reversed_name_before_label(self):
+        c = extract_subject_candidates("John SmithPatient:\n")
+        self.assertEqual(c["patient_name"], "John Smith")
+        c2 = extract_subject_candidates("Jane Q DoePatient Name:\n")
+        self.assertEqual(c2["patient_name"], "Jane Q Doe")
+
+    def test_reversed_accession_before_label(self):
+        c = extract_subject_candidates("ACC-42Accession Number:\n")
+        self.assertEqual(c["specimen_id"], "ACC-42")
+
+    def test_forward_pattern_still_preferred_when_both_present(self):
+        # If a document happens to contain both a normal "Label: value"
+        # line and something that could coincidentally look like the
+        # reversed form elsewhere, the straightforward forward match (the
+        # more common convention) should win since it's tried first.
+        text = "Specimen ID: S24-00123\n"
+        c = extract_subject_candidates(text)
+        self.assertEqual(c["specimen_id"], "S24-00123")
+
 
 class TestDateNormalization(unittest.TestCase):
     def test_iso_passthrough(self):

@@ -87,44 +87,93 @@ class FhirExportError(Exception):
 # these values get exported into a clinical-shaped FHIR resource once
 # confirmed, so a false-positive match here is a materially bigger deal
 # than one in the karyotype-candidate or interpretation scanners (which
-# only ever populate a review textarea). Each pattern requires the
-# specific label at the start of a line, immediately followed by a
+# only ever populate a review textarea). Each "forward" pattern requires
+# the specific label at the start of a line, immediately followed by a
 # colon and the value on the same line — "Physician Name:", "Ordering
 # Facility:", etc. are deliberately NOT matched by the patient-name
 # pattern, even though a looser "name" pattern would catch them too.
+#
+# Every field also gets a "reversed" pattern: real reports from task 22's
+# report-generation software glue the *value* immediately before its own
+# label with zero separator throughout their whole text layer, confirmed
+# against actual extract_text() output (e.g. "XX-XXXXCust. Specimen ID:",
+# "11/08/2016Collection Date:") — the same quirk task 22 already had to
+# handle for the karyotype candidate line itself, just not yet handled
+# here when this module first shipped. Each field is tried forward first
+# (the more common convention), then reversed as a fallback.
+#
+# The date and specimen-ID reversed patterns anchor on an unambiguous
+# value shape (a date, or an alnum/dash token) immediately before the
+# label, so there's no ambiguity about where the value ends. The
+# patient-name reversed pattern is inherently weaker — a person's name
+# has no fixed character-class boundary the way a date does — so it's a
+# heuristic (1-4 capitalized word-like tokens immediately before the
+# label) rather than a hard structural signal, same caveat this tool
+# already gives its band-plausibility checks. It's still just a
+# candidate for human review, never applied to an export unconfirmed, so
+# an occasional miss or imprecise match here costs a manual retype, not
+# a bad export.
 #
 # Like every other PDF-derived value in this tool, a match here is a
 # *candidate* — returned as unmodified text for the frontend to show for
 # explicit review/edit/confirmation, never applied to an export directly.
 
-_SUBJECT_FIELD_PATTERNS: Dict[str, "re.Pattern[str]"] = {
-    "patient_name": re.compile(
-        r'^\s*patient(?:\s*name)?\s*:\s*(\S.*)$', re.IGNORECASE | re.MULTILINE),
-    "date_of_birth": re.compile(
-        r'^\s*(?:date\s+of\s+birth|dob)\s*:\s*(\S.*)$', re.IGNORECASE | re.MULTILINE),
-    "specimen_id": re.compile(
-        r'^\s*(?:specimen(?:\s*id)?|accession(?:\s*(?:#|no\.?|number))?)\s*:\s*(\S.*)$',
-        re.IGNORECASE | re.MULTILINE),
-    "collection_date": re.compile(
-        r'^\s*(?:collection\s+date|date\s+collected|specimen\s+collected)\s*:\s*(\S.*)$',
-        re.IGNORECASE | re.MULTILINE),
-    "report_date": re.compile(
-        r'^\s*(?:report\s+date|date\s+reported)\s*:\s*(\S.*)$', re.IGNORECASE | re.MULTILINE),
+_DATE_VALUE = r'(\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})'
+
+_SUBJECT_FIELD_PATTERNS: Dict[str, List["re.Pattern[str]"]] = {
+    "patient_name": [
+        re.compile(r'^\s*patient(?:\s*name)?\s*:\s*(\S.*)$', re.IGNORECASE | re.MULTILINE),
+        # The label half is matched case-insensitively via the inline
+        # (?i:...) scoped flag -- deliberately NOT re.IGNORECASE on the
+        # whole pattern, which would also loosen the [A-Z] in the name
+        # heuristic itself and defeat the point of requiring capitalized
+        # word tokens as the value-boundary signal.
+        re.compile(r'((?:[A-Z][a-zA-Z\'\-]*\s+){0,3}[A-Z][a-zA-Z\'\-]*)\s*(?i:patient(?:\s*name)?)\s*:',
+                   re.MULTILINE),
+    ],
+    "date_of_birth": [
+        re.compile(r'^\s*(?:date\s+of\s+birth|dob)\s*:\s*(\S.*)$', re.IGNORECASE | re.MULTILINE),
+        re.compile(_DATE_VALUE + r'\s*(?:date\s*of\s*birth|dob)\s*:', re.IGNORECASE),
+    ],
+    "specimen_id": [
+        re.compile(
+            r'^\s*(?:specimen(?:\s*id)?|accession(?:\s*(?:#|no\.?|number))?)\s*:\s*(\S.*)$',
+            re.IGNORECASE | re.MULTILINE),
+        re.compile(r'([A-Za-z0-9][A-Za-z0-9\-]*?)\s*(?:cust\.?\s*)?specimen(?:\s*id)?\s*:',
+                   re.IGNORECASE),
+        re.compile(r'([A-Za-z0-9][A-Za-z0-9\-]*?)\s*accession(?:\s*(?:#|no\.?|number))?\s*:',
+                   re.IGNORECASE),
+    ],
+    "collection_date": [
+        re.compile(r'^\s*(?:collection\s+date|date\s+collected|specimen\s+collected)\s*:\s*(\S.*)$',
+                   re.IGNORECASE | re.MULTILINE),
+        re.compile(_DATE_VALUE + r'\s*(?:collection\s*date|date\s*collected|specimen\s*collected)\s*:',
+                   re.IGNORECASE),
+    ],
+    "report_date": [
+        re.compile(r'^\s*(?:report\s+date|date\s+reported)\s*:\s*(\S.*)$', re.IGNORECASE | re.MULTILINE),
+        re.compile(_DATE_VALUE + r'\s*(?:report\s*date|date\s*reported)\s*:', re.IGNORECASE),
+    ],
 }
 
 
 def extract_subject_candidates(text: str) -> Dict[str, Optional[str]]:
     """Scans `text` (a full document's extracted/OCR'd text) for a small,
     fixed set of labeled subject/demographic fields. Returns a dict with
-    exactly the keys in `_SUBJECT_FIELD_PATTERNS`, each either the
-    matched line's value (raw, unmodified, first match only) or None if
-    that label wasn't found. Never raises on no-match — a missing field
-    just means the frontend leaves that input blank, same as
-    typed/pasted input with no PDF at all."""
+    exactly the keys in `_SUBJECT_FIELD_PATTERNS`, each either the first
+    matched value (raw, unmodified) or None if none of that field's
+    patterns matched. Never raises on no-match — a missing field just
+    means the frontend leaves that input blank, same as typed/pasted
+    input with no PDF at all."""
     result: Dict[str, Optional[str]] = {}
-    for field, pattern in _SUBJECT_FIELD_PATTERNS.items():
-        m = pattern.search(text)
-        result[field] = m.group(1).strip() if m else None
+    for field, patterns in _SUBJECT_FIELD_PATTERNS.items():
+        value = None
+        for pattern in patterns:
+            m = pattern.search(text)
+            if m:
+                value = m.group(1).strip()
+                break
+        result[field] = value
     return result
 
 
