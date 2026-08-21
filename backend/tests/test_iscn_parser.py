@@ -812,60 +812,49 @@ class TestCandidateLineDetection(unittest.TestCase):
             ["47,XY,+8[10]/46,XY[10]"],
         )
 
-    def test_trims_known_label_glued_with_no_bracket_to_anchor_on(self):
+    def test_trims_at_top_level_semicolon_with_no_bracket_to_anchor_on(self):
         # A second real report, same "value glued directly onto Label:"
         # software quirk as above, but this time landing on a *normal*
         # (no-abnormality) karyotype line with no "[N]" cell count at
         # all -- so _trim_trailing_garbage's "]"-anchored trim (tested
         # above) is a no-op here; nothing to anchor on. Confirmed against
         # the real PDF's actual extract_text() output: "46,XX ; FEMALE
-        # KARYOTYPEResults:" -- the section's own "Results:" label glued
-        # straight onto the end with zero separator.
+        # KARYOTYPEResults:" -- a plain-English gloss the report inserts
+        # after a bare ";", with its own "Results:" section label then
+        # glued onto the end of *that* with zero separator. A top-level
+        # ";" (outside any parens) is never legal ISCN, so trimming there
+        # removes both problems in one structural cut -- a clean "46,XX",
+        # not just the machine-glued label with the gloss left behind.
         text = "46,XX ; FEMALE KARYOTYPEResults:\nINTERPRETATION: Normal female karyotype.\n"
         self.assertEqual(
             find_candidate_iscn_lines(text),
-            ["46,XX ; FEMALE KARYOTYPE"],
+            ["46,XX"],
         )
 
-    def test_known_label_trim_leaves_genuine_trailing_prose_alone(self):
-        # The remaining " ; FEMALE KARYOTYPE" above is the report's own
-        # human-authored descriptive gloss, not a machine-glued artifact
-        # -- same "don't guess at trailing prose" policy as
-        # test_captures_rest_of_line_without_correction, just confirming
-        # it still holds once the *known label* is stripped off first.
-        # The candidate is left non-empty and un-corrected; the parser's
-        # own error/warning UI is what surfaces this to the user, not a
-        # silent guess here about where the "real" content ends.
-        self.assertNotEqual(
-            find_candidate_iscn_lines("46,XX ; FEMALE KARYOTYPEResults:\n")[0],
-            "46,XX",
+    def test_semicolon_inside_parens_not_treated_as_terminator(self):
+        # The exact opposite risk: ";" is core, load-bearing ISCN syntax
+        # *inside* a rearrangement's own chromosome/band list -- t(9;22),
+        # der(13;14)(q10;q10), rob(). Depth-tracking (not a bare ";"
+        # search) is what keeps these from being misread as a top-level
+        # terminator.
+        self.assertEqual(
+            find_candidate_iscn_lines("46,XY,t(9;22)(q34;q11.2)[20]"),
+            ["46,XY,t(9;22)(q34;q11.2)[20]"],
+        )
+        self.assertEqual(
+            find_candidate_iscn_lines("46,XY,der(13;14)(q10;q10)"),
+            ["46,XY,der(13;14)(q10;q10)"],
         )
 
-    def test_known_label_only_trimmed_when_glued_with_zero_separator(self):
-        # A real space before the label -- e.g. a standalone section
-        # header immediately following a candidate on the same line --
-        # is NOT the glue-artifact pattern this fix targets, so it's
-        # left alone, consistent with this tool never guessing at
-        # trailing prose it can't structurally distinguish from a
-        # deliberate separator.
+    def test_no_semicolon_leaves_genuine_trailing_prose_alone(self):
+        # Trailing prose with no semicolon at all has no structural
+        # boundary to trim at, so it's left completely alone -- same
+        # "don't guess at trailing prose" policy as
+        # test_captures_rest_of_line_without_correction.
         self.assertEqual(
             find_candidate_iscn_lines("46,XY normal male karyotype Results:\n"),
             ["46,XY normal male karyotype Results:"],
         )
-
-    def test_other_known_labels_also_trimmed_when_glued(self):
-        # Glued onto a closing paren rather than bare "XY" -- CANDIDATE_LINE_RE
-        # itself requires a word-boundary right after the sex-chromosome
-        # letters, which "XY" immediately followed by a word character
-        # (e.g. "XYSignature:") never satisfies; every real glued-label
-        # case actually seen lands later in the string, same as here.
-        for label in ("Signature:", "Cultures:", "Karyotypes:", "FISH Images:", "CPT Codes:"):
-            with self.subTest(label=label):
-                text = f"46,XY,t(9;22)(q34;q11.2){label}\n"
-                self.assertEqual(
-                    find_candidate_iscn_lines(text),
-                    ["46,XY,t(9;22)(q34;q11.2)"],
-                )
 
 
 class TestLabInterpretationExtraction(unittest.TestCase):
