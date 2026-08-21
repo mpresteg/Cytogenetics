@@ -215,6 +215,62 @@ as blocked/under-review, not "resolved" preemptively.
 
 ## Done
 
+### 24. Grow MALIGNANCY_KNOWLEDGE with a CLL panel and 6 more entries
+
+**Context**: Follow-up from task 23. Two research passes: (1) a general
+search for well-established recurrent cytogenetic markers not yet in the
+table, and (2) cross-checking against CIBMTR's own Disease Classification
+form (2402) — what a real-world transplant-outcomes data-collection
+operation considers worth a standardized field, an independent signal
+from the WHO-classification framing the table started from. CIBMTR's
+form confirmed most of pass (1)'s findings and surfaced one more
+concretely addable candidate (t(1;19)). Biggest single gap found: chronic
+lymphocytic leukemia (CLL) had zero representation in the table at all,
+despite being one of the most common adult leukemias and a textbook case
+of FISH-panel-driven prognosis.
+
+**Done when**: 10 new entries, each fitting the existing matcher shape
+(a specific chromosome pair or single-chromosome event, no new matcher
+architecture needed) and each cited to an accurate primary source, not
+just tagged "CIBMTR" (a form field confirms something is tracked, not
+why it matters clinically):
+- CLL panel (Döhner et al., *N Engl J Med* 343:1910, 2000 hierarchy):
+  del(17p), del(11q), +12 (trisomy 12), del(13q).
+- Burkitt lymphoma's three MYC-partner translocations: t(8;14), t(2;8),
+  t(8;22).
+- Two more B-ALL-associated translocations CIBMTR's own form tracks:
+  t(4;11) (KMT2A-AFF1), t(1;19) (TCF3-PBX1).
+- del(20q), an MDS/MPN-recurrent deletion alongside the existing
+  del(5q)/-7 entries.
+
+**Out of scope**: "monosomal karyotype" — also found via the CIBMTR
+cross-check (MDS), but it's a case-level pattern (2+ distinct autosomal
+monosomies, or one plus a structural abnormality), architecturally more
+like the existing "complex karyotype" rule in `assess_case()` than a
+`MALIGNANCY_KNOWLEDGE` row — real design work, not a quick add; flagged
+for a future task if wanted. CEBPA/TP53 "mutation" (also CIBMTR-tracked
+for AML) — molecular/sequencing findings, not visible in an ISCN
+karyotype string at all, out of scope by the tool's own input model, not
+a gap in the table. KMT2A rearrangements generally (t(4;11) is one
+specific, well-known partner of 90+ possible ones) — a generic "any
+translocation touching 11q23" rule would need a new band-aware matcher,
+not just a table row.
+
+Done: 10 new `MALIGNANCY_KNOWLEDGE` entries using only the existing
+`_single_chrom_matcher`/`_chrom_set_matcher` helpers — no new matcher
+logic needed. Checked for chromosome-set collisions against all 10
+existing entries before writing any code; none found. del(17p)'s note
+is deliberately worded to flag that it's *not* CLL-specific (TP53 loss
+is adverse across CLL, MDS, and AML alike) — unlike del(11q)/+12/
+del(13q), which are more genuinely characteristic of CLL specifically.
+
+10 new tests in `TestClinicalAssessment` (113 total, all passing), one
+per entry, confirming the correct label appears and nothing cross-
+matches an unrelated existing entry (spot-checked directly: each of the
+10 new cases produces exactly one match, none bleed into e.g. the
+existing t(11;14)/t(14;18) entries despite sharing chromosome 14 or 11
+with some of them). Verified live in the browser.
+
 ### 23. Add trisomy 8 to MALIGNANCY_KNOWLEDGE
 
 **Context**: Follow-up from task 22's real report — a de-identified
