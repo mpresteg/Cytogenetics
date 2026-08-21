@@ -151,8 +151,10 @@ _SUBJECT_FIELD_PATTERNS: Dict[str, List["re.Pattern[str]"]] = {
                    re.IGNORECASE),
     ],
     "report_date": [
-        re.compile(r'^\s*(?:report\s+date|date\s+reported)\s*:\s*(\S.*)$', re.IGNORECASE | re.MULTILINE),
-        re.compile(_DATE_VALUE + r'\s*(?:report\s*date|date\s*reported)\s*:', re.IGNORECASE),
+        re.compile(r'^\s*(?:report\s+date|reported\s+date|date\s+reported)\s*:\s*(\S.*)$',
+                   re.IGNORECASE | re.MULTILINE),
+        re.compile(_DATE_VALUE + r'\s*(?:report\s*date|reported\s*date|date\s*reported)\s*:',
+                   re.IGNORECASE),
     ],
 }
 

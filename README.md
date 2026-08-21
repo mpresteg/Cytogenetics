@@ -103,7 +103,7 @@ different frontend later) are at **http://127.0.0.1:8000/docs**.
 ## A note on testing
 
 `iscn_parser.py`'s logic is covered by the automated suite described below
-(149 tests, run on every push/PR by CI). Beyond that, every feature in this
+(154 tests, run on every push/PR by CI). Beyond that, every feature in this
 tool has also been verified live — the actual FastAPI server launched, the
 actual UI driven in a browser, against both synthetic fixtures and real
 (de-identified) lab report PDFs — not just unit-tested in isolation. If
@@ -295,6 +295,27 @@ clause, or end of string) — a structural signal from ISCN grammar
 itself, not a guess about what looks like prose, and it never alters a
 single character of the actual candidate, only narrows where it ends.
 
+A normal (no-abnormality) result often has no `[N]` cell count at all
+on its karyotype line, so a candidate can hit this same glued-label
+quirk with no bracket for that fix to anchor on — confirmed against a
+third real report, whose normal-result line reads `"46,XX ; FEMALE
+KARYOTYPEResults:"`: a plain-English gloss the report itself inserts
+after a bare `;`, with its own `"Results:"` label then glued onto the
+end of *that* with zero separator. `_trim_at_top_level_semicolon()`
+covers this with one general rule rather than a growing list of known
+label words: `;` is never legal ISCN syntax outside of an
+already-opened rearrangement's own chromosome/band list (`t(9;22)`,
+`der(13;14)(q10;q10)`, `rob()`) — confirmed by checking every place
+this module itself splits on `;`, all of which operate on content
+already captured *inside* a matched `(...)` group, never on a whole
+karyotype string. So a `;` at bracket depth 0 (tracked the same way
+`split_top_level()` tracks comma depth) can only mean real ISCN content
+has ended; trimming there resolves that report's line to a clean
+`"46,XX"`, not just the machine-glued label with the gloss left behind.
+Depth-tracking (not a bare `;` search) is what keeps a translocation's
+own semicolons — which are inside parens — from being misread as a
+terminator.
+
 **Case-level clinical assessment:** every parse also returns a top-level
 `assessment` (`assess_case()` in `iscn_parser.py`) that rolls the case's
 findings up into one plain-English summary, plus an explicit flag when a
@@ -401,7 +422,7 @@ back to PIL's default only if neither is installed.
 Four modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 107 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 110 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)
@@ -432,7 +453,7 @@ pytest-discoverable if that's your preferred runner:
   no karyotype content returns no candidates, and — the routing decision
   itself — a normal text-layer PDF takes the text path, not OCR, even
   though both code paths exist side by side.
-- `test_fhir_export.py` — 36 tests, zero dependencies beyond the stdlib.
+- `test_fhir_export.py` — 38 tests, zero dependencies beyond the stdlib.
   Covers: subject/demographic field extraction from PDF text (each
   labeled field, alternate label wording, no false-positive match on an
   unrelated label like "Physician Name:", and task 26's reversed
@@ -461,7 +482,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-149 tests total, all passing — verified locally and independently by CI
+154 tests total, all passing — verified locally and independently by CI
 on every push, not just claimed to pass.
 
 ## Working on this repo

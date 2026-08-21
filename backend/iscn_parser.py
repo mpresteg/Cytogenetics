@@ -1067,6 +1067,46 @@ def _trim_trailing_garbage(candidate: str) -> str:
     return candidate
 
 
+def _trim_at_top_level_semicolon(candidate: str) -> str:
+    """Truncates `candidate` right before the first ";" that appears
+    outside of any parentheses/brackets (bracket depth 0 — same
+    depth-tracking `split_top_level()` above already uses for commas).
+
+    ";" is never legal in ISCN grammar at the top level — it only ever
+    separates chromosomes/bands *inside* an already-opened rearrangement
+    like t(9;22)(q34;q11.2), der(), or rob() (confirmed by grep: every
+    ".split(';')" in this module operates on an already-captured
+    parenthesized group, never on a whole karyotype string). So a bare
+    top-level ";" can only mean one thing: real ISCN content has ended
+    and something else — free text, in every case seen so far — has
+    started. This generalizes an earlier, narrower attempt at the same
+    problem (recognizing a small fixed vocabulary of known
+    report-section-label words glued onto a candidate's end, task 27's
+    first cut) into one structural rule that doesn't depend on any
+    particular lab's wording: confirmed against a real report whose own
+    normal-result line reads "46,XX ; FEMALE KARYOTYPEResults:" — a
+    plain-English gloss the report itself inserts after a semicolon,
+    with its own "Results:" section label then glued onto the end of
+    *that* with zero separator (same quirk as `_trim_trailing_garbage`
+    above). Trimming at the semicolon removes both problems in one
+    structural cut, without needing to know anything about "FEMALE
+    KARYOTYPE" or "Results:" as specific words.
+
+    Runs before `_trim_trailing_garbage` in find_candidate_iscn_lines()
+    below: once real ISCN content has structurally ended at a top-level
+    ";", anything after it — brackets included — is definitionally not
+    real content either."""
+    depth = 0
+    for i, ch in enumerate(candidate):
+        if ch in '([':
+            depth += 1
+        elif ch in ')]':
+            depth -= 1
+        elif ch == ';' and depth == 0:
+            return candidate[:i].rstrip()
+    return candidate
+
+
 def _looks_like_section_boundary(line: str) -> bool:
     """True if `line` looks like a standalone report section header
     (e.g. "CULTURES", "COMMENT", "SIGNATURE") rather than more
@@ -1108,6 +1148,7 @@ def find_candidate_iscn_lines(text: str) -> List[str]:
             candidate = candidate.rstrip() + _continuation_separator(candidate) + lines[i].strip()
             i += 1
             continuations += 1
+        candidate = _trim_at_top_level_semicolon(candidate)
         candidate = _trim_trailing_garbage(candidate)
         if candidate:
             candidates.append(candidate)
