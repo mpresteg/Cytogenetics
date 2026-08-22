@@ -465,6 +465,12 @@ def parse_karyotype_token(token: str) -> Finding:
 # gene loci and their typical clinical association. This is a starting
 # scaffold, not a diagnostic database — always verify against the actual
 # test's validated probe documentation. Keys are matched case-insensitively.
+#
+# Last reviewed for freshness: 2026-08 (task 3). Every entry added from
+# task 3 onward cites a specific, dated source in its note text — that
+# citation is the real freshness signal (has THAT paper been superseded
+# or retracted?), not this date on its own. See TASKS.md's "Keeping
+# knowledge tables current" note for the review process.
 PROBE_KNOWLEDGE = {
     "BCR": "22q11.2 — commonly paired with ABL1 to detect BCR-ABL1 fusion (Philadelphia chromosome), associated with CML and a subset of ALL.",
     "ABL1": "9q34 — commonly paired with BCR to detect BCR-ABL1 fusion (Philadelphia chromosome), associated with CML and a subset of ALL.",
@@ -477,16 +483,50 @@ PROBE_KNOWLEDGE = {
     "IGH": "14q32 — frequent translocation partner in B-cell lymphomas (e.g. IGH-MYC, IGH-BCL2, IGH-CCND1).",
     "BCL2": "18q21 — commonly rearranged with IGH in follicular lymphoma.",
     "CCND1": "11q13 — commonly rearranged with IGH in mantle cell lymphoma.",
+    # task 3: every entry below cites a real source (see TASKS.md task 3)
+    # — the original entries above predate that discipline and are left
+    # as-is rather than retroactively cited.
+    "TP53": "17p13.1 — tumor suppressor gene; deletion/mutation status is a "
+            "well-established biomarker across CLL, MDS, and AML "
+            "(Döhner et al., N Engl J Med 343:1910, 2000).",
+    "EGFR": "7p11.2 — amplification is a common finding in glioblastoma and "
+            "a well-established clinical biomarker across gliomas "
+            "(Saadeh, Mahfouz & Assi, Int J Biol Markers 33:22, 2018).",
+    "PTEN": "10q23 — tumor suppressor gene; loss is a recurrent finding "
+            "across brain, breast, and prostate cancer, among others "
+            "(Li et al., Science 275:1943, 1997).",
+    "RB1": "13q14.2 — the first cloned human tumor suppressor gene, named "
+           "for its role in retinoblastoma (Friend et al., Nature 323:643, "
+           "1986). Distinct from the D13S319 probe (also 13q14.2, a "
+           "nearby but different CLL-relevant region of the same band).",
+    "MYCN": "2p24 — amplification (commonly seen as double minutes or a "
+            "homogeneously staining region) is a well-established "
+            "biomarker in neuroblastoma, first described by Brodeur et al. "
+            "(Science 224:1121, 1984). Also referred to as N-MYC — a "
+            "related but distinct gene from MYC (8q24).",
+    "ALK": "2p23 — rearrangement (e.g. fused to NPM1 via t(2;5)) is "
+           "characteristic of ALK-positive anaplastic large cell lymphoma "
+           "(Morris et al., Science 263:1281, 1994), and occurs via other "
+           "fusion partners in a subset of non-small cell lung cancer.",
 }
 
 # Fusion-specific notes, keyed by a frozenset of the two probe names involved
 # (case-insensitive). Checked when a FISH token uses "con"/"amp" notation.
+#
+# Last reviewed for freshness: 2026-08 (task 3) — see PROBE_KNOWLEDGE's
+# comment above; same review process applies here.
 FUSION_KNOWLEDGE = {
     frozenset({"ABL1", "BCR"}): "Classic probe combination for detecting BCR-ABL1 fusion "
                                  "(Philadelphia chromosome), characteristic of CML and seen in some ALL.",
     frozenset({"IGH", "MYC"}): "Associated with Burkitt lymphoma and other aggressive B-cell lymphomas.",
     frozenset({"IGH", "BCL2"}): "Associated with follicular lymphoma (t(14;18)).",
     frozenset({"IGH", "CCND1"}): "Associated with mantle cell lymphoma (t(11;14)).",
+    # task 3: cited (see PROBE_KNOWLEDGE's task 3 comment above).
+    frozenset({"PML", "RARA"}): "Defines acute promyelocytic leukemia (APL) via t(15;17) "
+                                 "(de Thé et al., Nature 347:558, 1990).",
+    frozenset({"ETV6", "RUNX1"}): "One of the most common recurrent gene fusions in pediatric "
+                                   "B-lymphoblastic leukemia (B-ALL), via a cryptic t(12;21) "
+                                   "(Romana et al., Blood 85:3662, 1995).",
 }
 
 
@@ -812,6 +852,14 @@ def _any_of(*matchers):
 # particular is deliberately worded to note it's not CLL-specific (TP53
 # loss is adverse across CLL, MDS, and AML alike), unlike del(11q)/+12/
 # del(13q), which are more specifically characteristic of CLL.
+#
+# Last reviewed for freshness: 2026-08 (task 3, in the course of adding
+# citations to PROBE_KNOWLEDGE/FUSION_KNOWLEDGE — this table's own
+# entries were already all cited as of task 24). Every entry's citation
+# is the real freshness signal (has the WHO Classification released a
+# new edition since 5th ed. 2022? has a cited paper been superseded?),
+# not this date on its own. See TASKS.md's "Keeping knowledge tables
+# current" note for the review process.
 MALIGNANCY_KNOWLEDGE = [
     (_chrom_set_matcher({"9", "22"}, count=2),
      "t(9;22) — BCR-ABL1",

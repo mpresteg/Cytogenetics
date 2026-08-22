@@ -103,7 +103,7 @@ different frontend later) are at **http://127.0.0.1:8000/docs**.
 ## A note on testing
 
 `iscn_parser.py`'s logic is covered by the automated suite described below
-(157 tests, run on every push/PR by CI). Beyond that, every feature in this
+(160 tests, run on every push/PR by CI). Beyond that, every feature in this
 tool has also been verified live — the actual FastAPI server launched, the
 actual UI driven in a browser, against both synthetic fixtures and real
 (de-identified) lab report PDFs — not just unit-tested in isolation. If
@@ -162,11 +162,15 @@ and `/api/export-fhir` actually return, versus what `app.js` expects.
 - Probe results: presence/absence (`ABL1+`, `BCR-`), copy number (`D21S259x3`),
   fusion (`ABL1 con BCR`)
 - **Reference notes:** a small, non-exhaustive lookup table (`PROBE_KNOWLEDGE`,
-  `FUSION_KNOWLEDGE` in `iscn_parser.py`) attaches a short clinical-context
-  note to well-known probes/fusions (e.g. BCR-ABL1 → CML/ALL, IGH-BCL2 →
-  follicular lymphoma). Every such note is explicitly labeled "reference
-  note, not diagnostic" in the output — this is a starting scaffold, not a
-  validated knowledge base.
+  17 entries; `FUSION_KNOWLEDGE`, 6 entries; both in `iscn_parser.py`)
+  attaches a short clinical-context note to well-known probes/fusions
+  (e.g. BCR-ABL1 → CML/ALL, IGH-BCL2 → follicular lymphoma, PML-RARA →
+  APL). Every such note is explicitly labeled "reference note, not
+  diagnostic" in the output — this is a starting scaffold, not a
+  validated knowledge base. Every entry added since task 3 cites a real
+  source inline in its note text; the original entries (initial commit)
+  predate that discipline and lean on general, well-established
+  genetics knowledge instead.
 - **Band-locus prefix:** in a multi-probe list written as
   `locus(PROBE),locus(PROBE),...` (e.g. `1p32(CDKN2Cx2),13q34(LAMP1x2)`,
   a common way labs report a multi-locus interphase FISH panel), the
@@ -422,7 +426,7 @@ back to PIL's default only if neither is installed.
 Four modules under `backend/tests/`, all stdlib `unittest`, all
 pytest-discoverable if that's your preferred runner:
 
-- `test_iscn_parser.py` — 113 tests, zero dependencies beyond the stdlib,
+- `test_iscn_parser.py` — 116 tests, zero dependencies beyond the stdlib,
   so it's runnable without `pip install` anything. Covers: normal
   karyotypes, numerical abnormalities and the modal-number consistency
   check, every structural token type, `der()` decomposition (both forms)
@@ -482,7 +486,7 @@ python3 -m unittest discover -s tests -v
 pytest tests/ -v
 ```
 
-157 tests total, all passing — verified locally and independently by CI
+160 tests total, all passing — verified locally and independently by CI
 on every push, not just claimed to pass.
 
 ## Working on this repo

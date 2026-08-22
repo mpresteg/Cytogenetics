@@ -72,59 +72,41 @@ at the bottom of `## Backlog` following the same three-field format.
   a few sentences suffice for small, low-risk, self-evident changes. Not
   every task needs the same depth just for consistency's sake.
 
+## Keeping knowledge tables current
+
+`MALIGNANCY_KNOWLEDGE`, `PROBE_KNOWLEDGE`, and `FUSION_KNOWLEDGE` (all
+in `backend/iscn_parser.py`) are curated, cited clinical-reference
+tables, not a live feed — they need a real process to avoid silently
+going stale, not just "someone remembers to check eventually."
+
+- **The citation *is* the freshness signal.** Every entry added since
+  task 23 (`MALIGNANCY_KNOWLEDGE`) / task 3 (`PROBE_KNOWLEDGE`,
+  `FUSION_KNOWLEDGE`) cites something specific and dated — a paper, or a
+  WHO Classification edition. The concrete trigger to revisit an entry
+  is "has *that* source been superseded" (a new WHO Classification
+  edition, a retracted/updated paper), not an arbitrary calendar
+  reminder that fires whether or not anything actually changed. Each
+  table also carries a "last reviewed" header comment as a cheap, fixed
+  anchor for that check.
+- **Automated check, human merge — never automated merge.** These
+  tables are clinical-adjacent content; an unsupervised process that
+  edits and merges them on its own is explicitly not wanted here, same
+  trust boundary as every other change in this repo (see Git/PR
+  workflow above — nothing merges without an explicit human decision).
+  What *is* automated: a scheduled review that checks each table's
+  cited sources for staleness and drafts a normal branch + PR if it
+  finds something concrete, following this file's own citation/
+  Done-when conventions — never a direct push, never an auto-merge.
+  Silence (no PR) when nothing concrete is found, rather than a
+  no-op "reviewed, nothing to report" PR cluttering the repo.
+- **Cadence: annual.** Matches how often this specific content actually
+  changes (WHO Classification editions are years apart; individual
+  paper citations essentially never go stale faster than that) — a
+  tighter schedule would mostly just run and find nothing.
+
 ---
 
 ## Backlog
-
-### 3. Grow PROBE_KNOWLEDGE / FUSION_KNOWLEDGE
-
-**Context**: `PROBE_KNOWLEDGE` and `FUSION_KNOWLEDGE` dicts in
-`backend/iscn_parser.py`, currently ~11 and 4 entries respectively. Good
-candidates to add: TP53 (17p13.1), EGFR (7p11.2), PTEN (10q23), RB1
-(13q14.2), N-MYC/MYCN (2p24), ALK (2p23), PML-RARA fusion (t(15;17), APL),
-ETV6-RUNX1 fusion (t(12;21), pediatric ALL).
-
-Both tables date to the initial commit, before this repo's task-tracked
-history — unlike `MALIGNANCY_KNOWLEDGE` (task 9, cited to the WHO
-Classification of Haematolymphoid Tumours; tasks 23/24 added further
-entries each with their own specific citation), none of the original
-11+4 entries here cite a source; they lean on general, well-established
-genetics knowledge instead. This task extends the same citation
-discipline `MALIGNANCY_KNOWLEDGE` has followed since task 23 to these
-two tables going forward — the original uncited entries stay as they
-are (small, incremental changes, not a retroactive audit), but every
-*new* entry added here should cite something real, the same "don't
-assert authority without a source" standard the rest of this project's
-knowledge tables now follow.
-
-Two things worth care while writing the new entries, not scope changes:
-- `RB1` (13q14.2) sits right next to the existing `D13S319` entry
-  (13q14.2, already tied to CLL deletion) — different things (a specific
-  CLL-relevant probe vs. the retinoblastoma tumor-suppressor gene), but
-  close enough in locus that the note text should make the distinction
-  explicit rather than reading as a duplicate.
-- `MYCN`/`N-MYC` (2p24) is a different gene from the existing `MYC`
-  entry (8q24) — related by name, biologically distinct (MYC: Burkitt/
-  B-cell lymphoma; MYCN: neuroblastoma amplification). Key it `"MYCN"`
-  (current HGNC symbol, matching how `HER2`/`ERBB2` already coexist as
-  two keys for one locus) with "N-MYC" mentioned as the alias in the
-  note text, not keyed on the alias itself.
-
-**Done when**: each new entry follows the existing format (locus +
-one-line clinical association, no dosing/staging/prognostic claims),
-cites a real source inline in the note text (same style as
-`MALIGNANCY_KNOWLEDGE`'s post-task-23 entries — no schema change needed,
-these are already plain prose strings), and
-`test_unknown_probe_no_note_no_crash`-style coverage confirms each new
-probe surfaces its note. Update the README's probe-table description if
-the count changes meaningfully.
-
-**Out of scope**: turning this into a queryable/searchable reference (e.g.
-an API endpoint to browse the table) — that's a feature, this task is just
-data entry against the existing shape; retroactively citing the original
-11+4 entries — not what this task is scoped to touch.
-
----
 
 ### 4. Real ISCN edition differences
 
@@ -220,6 +202,57 @@ as blocked/under-review, not "resolved" preemptively.
 *(none)*
 
 ## Done
+
+### 3. Grow PROBE_KNOWLEDGE / FUSION_KNOWLEDGE
+
+**Context**: `PROBE_KNOWLEDGE` and `FUSION_KNOWLEDGE` dicts in
+`backend/iscn_parser.py`, ~11 and 4 entries respectively before this
+task. Good candidates: TP53 (17p13.1), EGFR (7p11.2), PTEN (10q23), RB1
+(13q14.2), N-MYC/MYCN (2p24), ALK (2p23), PML-RARA fusion (t(15;17),
+APL), ETV6-RUNX1 fusion (t(12;21), pediatric ALL).
+
+Both tables date to the initial commit, before this repo's task-tracked
+history — unlike `MALIGNANCY_KNOWLEDGE` (task 9, cited to the WHO
+Classification of Haematolymphoid Tumours; tasks 23/24 added further
+entries each with their own specific citation), none of the original
+11+4 entries here cited a source. This task extended the same citation
+discipline `MALIGNANCY_KNOWLEDGE` has followed since task 23 to these
+two tables going forward — the original uncited entries stay as they
+are, but every entry added here cites something real.
+
+**Done when**: each new entry follows the existing format (locus +
+one-line clinical association, no dosing/staging/prognostic claims),
+cites a real source inline in the note text, and
+`test_unknown_probe_no_note_no_crash`-style coverage confirms each new
+probe surfaces its note. Update the README's probe-table description if
+the count changes meaningfully.
+
+**Out of scope**: turning this into a queryable/searchable reference;
+retroactively citing the original 11+4 entries.
+
+Done: 6 new `PROBE_KNOWLEDGE` entries (TP53, EGFR, PTEN, RB1, MYCN,
+ALK — 17 total) and 2 new `FUSION_KNOWLEDGE` entries (PML-RARA,
+ETV6-RUNX1 — 6 total), each cited to a real, verified paper (checked
+via live web search before writing, not from memory — e.g. Brodeur et
+al., Science 224:1121, 1984 for MYCN/neuroblastoma; de Thé et al.,
+Nature 347:558, 1990 for PML-RARA/APL; full list in the code comments).
+TP53's note reuses the same Döhner et al. citation already backing
+`MALIGNANCY_KNOWLEDGE`'s del(17p) entry, since both describe the same
+underlying gene.
+
+Caught and fixed before committing: the first draft of the RB1 and
+MYCN notes read "...distinct from D13S319 above" / "...distinct from
+MYC above" — the exact same standalone-readability mistake caught and
+fixed in task 23 (a note referencing "above" only makes sense read in
+the source file next to the other entries, not in the UI where a user
+just sees the one note on its own). Reworded both to name the other
+locus/gene directly instead of using positional language.
+
+3 new tests in `TestFish` (160 total, all passing) — one covering all
+6 new probe entries, one confirming neither corrected note contains the
+word "above", one covering both new fusion entries. Verified live
+through the actual `/api/parse` endpoint (`PML con RARA` resolving to
+the correct APL reference note, including its non-ASCII "é").
 
 ### 1. Multi-step der() chains
 

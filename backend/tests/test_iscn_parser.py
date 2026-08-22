@@ -296,6 +296,47 @@ class TestFish(unittest.TestCase):
         f = r["clones"][0]["findings"][0]
         self.assertNotIn("Reference note", f["interpretation"])
 
+    def test_task_3_new_probe_entries(self):
+        # Each new PROBE_KNOWLEDGE entry (task 3) surfaces its own
+        # reference note, same as any existing entry.
+        cases = {
+            "TP53": "17p13.1",
+            "EGFR": "7p11.2",
+            "PTEN": "10q23",
+            "RB1": "13q14.2",
+            "MYCN": "2p24",
+            "ALK": "2p23",
+        }
+        for probe, locus in cases.items():
+            with self.subTest(probe=probe):
+                r = parse_iscn(f"nuc ish({probe}x1)")
+                f = r["clones"][0]["findings"][0]
+                self.assertIn("Reference note", f["interpretation"])
+                self.assertIn(locus, f["interpretation"])
+
+    def test_rb1_and_mycn_notes_distinguish_nearby_entries(self):
+        # RB1 (13q14.2) sits right next to the existing D13S319 entry
+        # (also 13q14.2); MYCN (2p24) is a different gene from the
+        # existing MYC (8q24). Confirms each note is explicit about the
+        # distinction, standing alone (not "see above", which only makes
+        # sense read in source next to the other entries -- see task 23).
+        rb1 = parse_iscn("nuc ish(RB1x1)")["clones"][0]["findings"][0]
+        self.assertIn("D13S319", rb1["interpretation"])
+        self.assertNotIn(" above", rb1["interpretation"])
+
+        mycn = parse_iscn("nuc ish(MYCNx1)")["clones"][0]["findings"][0]
+        self.assertIn("MYC (8q24)", mycn["interpretation"])
+        self.assertNotIn(" above", mycn["interpretation"])
+
+    def test_task_3_new_fusion_entries(self):
+        r = parse_iscn("nuc ish(PML con RARA)")
+        joined = " ".join(f["interpretation"] for f in r["clones"][0]["findings"])
+        self.assertIn("acute promyelocytic leukemia", joined)
+
+        r = parse_iscn("nuc ish(ETV6 con RUNX1)")
+        joined = " ".join(f["interpretation"] for f in r["clones"][0]["findings"])
+        self.assertIn("B-lymphoblastic leukemia", joined)
+
     def test_fish_only_clone_captures_cell_count(self):
         # Previously silently dropped -- a standalone FISH clone's own
         # trailing [N] never made it into cell_count at all.
