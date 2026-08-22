@@ -151,6 +151,13 @@ numbers already there.
 
 ### 5. Export interpretation as text
 
+**Status: on hold**, pending clinician feedback on what the exported
+text should actually contain/look like (e.g. whether it should mirror
+the on-screen wording exactly, whether the "Reference note (not
+diagnostic)" framing needs to travel with each finding into the
+exported text too, format expectations for pasting into a chart vs. an
+email) — picking this back up once that feedback arrives.
+
 **Context**: `backend/static/app.js` (`renderClones()`/`runParse()`,
 which hold the currently-rendered parse result) and `backend/main.py`.
 No export functionality exists yet — findings are only ever rendered
@@ -164,7 +171,10 @@ readable as plain text (e.g. in an email), not just a JSON dump.
 
 **Out of scope**: PDF export, or any backend-side report generation —
 client-side plain text first; PDF can be a separate follow-up task if the
-plain-text version turns out to be insufficient.
+plain-text version turns out to be insufficient. Guessing at the
+clinician-feedback questions above without actual input — if feedback
+hasn't arrived yet, this task stays exactly as on hold, not "resolved"
+preemptively.
 
 ---
 
