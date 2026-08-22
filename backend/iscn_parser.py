@@ -465,6 +465,12 @@ def parse_karyotype_token(token: str) -> Finding:
 # gene loci and their typical clinical association. This is a starting
 # scaffold, not a diagnostic database — always verify against the actual
 # test's validated probe documentation. Keys are matched case-insensitively.
+#
+# Last reviewed for freshness: 2026-08 (task 3). Every entry added from
+# task 3 onward cites a specific, dated source in its note text — that
+# citation is the real freshness signal (has THAT paper been superseded
+# or retracted?), not this date on its own. See TASKS.md's "Keeping
+# knowledge tables current" note for the review process.
 PROBE_KNOWLEDGE = {
     "BCR": "22q11.2 — commonly paired with ABL1 to detect BCR-ABL1 fusion (Philadelphia chromosome), associated with CML and a subset of ALL.",
     "ABL1": "9q34 — commonly paired with BCR to detect BCR-ABL1 fusion (Philadelphia chromosome), associated with CML and a subset of ALL.",
@@ -506,6 +512,9 @@ PROBE_KNOWLEDGE = {
 
 # Fusion-specific notes, keyed by a frozenset of the two probe names involved
 # (case-insensitive). Checked when a FISH token uses "con"/"amp" notation.
+#
+# Last reviewed for freshness: 2026-08 (task 3) — see PROBE_KNOWLEDGE's
+# comment above; same review process applies here.
 FUSION_KNOWLEDGE = {
     frozenset({"ABL1", "BCR"}): "Classic probe combination for detecting BCR-ABL1 fusion "
                                  "(Philadelphia chromosome), characteristic of CML and seen in some ALL.",
@@ -843,6 +852,14 @@ def _any_of(*matchers):
 # particular is deliberately worded to note it's not CLL-specific (TP53
 # loss is adverse across CLL, MDS, and AML alike), unlike del(11q)/+12/
 # del(13q), which are more specifically characteristic of CLL.
+#
+# Last reviewed for freshness: 2026-08 (task 3, in the course of adding
+# citations to PROBE_KNOWLEDGE/FUSION_KNOWLEDGE — this table's own
+# entries were already all cited as of task 24). Every entry's citation
+# is the real freshness signal (has the WHO Classification released a
+# new edition since 5th ed. 2022? has a cited paper been superseded?),
+# not this date on its own. See TASKS.md's "Keeping knowledge tables
+# current" note for the review process.
 MALIGNANCY_KNOWLEDGE = [
     (_chrom_set_matcher({"9", "22"}, count=2),
      "t(9;22) — BCR-ABL1",

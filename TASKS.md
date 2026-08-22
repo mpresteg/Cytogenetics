@@ -72,6 +72,38 @@ at the bottom of `## Backlog` following the same three-field format.
   a few sentences suffice for small, low-risk, self-evident changes. Not
   every task needs the same depth just for consistency's sake.
 
+## Keeping knowledge tables current
+
+`MALIGNANCY_KNOWLEDGE`, `PROBE_KNOWLEDGE`, and `FUSION_KNOWLEDGE` (all
+in `backend/iscn_parser.py`) are curated, cited clinical-reference
+tables, not a live feed — they need a real process to avoid silently
+going stale, not just "someone remembers to check eventually."
+
+- **The citation *is* the freshness signal.** Every entry added since
+  task 23 (`MALIGNANCY_KNOWLEDGE`) / task 3 (`PROBE_KNOWLEDGE`,
+  `FUSION_KNOWLEDGE`) cites something specific and dated — a paper, or a
+  WHO Classification edition. The concrete trigger to revisit an entry
+  is "has *that* source been superseded" (a new WHO Classification
+  edition, a retracted/updated paper), not an arbitrary calendar
+  reminder that fires whether or not anything actually changed. Each
+  table also carries a "last reviewed" header comment as a cheap, fixed
+  anchor for that check.
+- **Automated check, human merge — never automated merge.** These
+  tables are clinical-adjacent content; an unsupervised process that
+  edits and merges them on its own is explicitly not wanted here, same
+  trust boundary as every other change in this repo (see Git/PR
+  workflow above — nothing merges without an explicit human decision).
+  What *is* automated: a scheduled review that checks each table's
+  cited sources for staleness and drafts a normal branch + PR if it
+  finds something concrete, following this file's own citation/
+  Done-when conventions — never a direct push, never an auto-merge.
+  Silence (no PR) when nothing concrete is found, rather than a
+  no-op "reviewed, nothing to report" PR cluttering the repo.
+- **Cadence: annual.** Matches how often this specific content actually
+  changes (WHO Classification editions are years apart; individual
+  paper citations essentially never go stale faster than that) — a
+  tighter schedule would mostly just run and find nothing.
+
 ---
 
 ## Backlog
