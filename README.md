@@ -1,5 +1,7 @@
 # ISCN Validator & Interpreter (prototype)
 
+![Tests](https://github.com/mpresteg/Cytogenetics/actions/workflows/tests.yml/badge.svg)
+
 A small web app that parses ISCN karyotype and FISH nomenclature strings,
 validates their structure, and produces a plain-English interpretation of
 each abnormality.
