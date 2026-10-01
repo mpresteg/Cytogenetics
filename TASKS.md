@@ -1016,6 +1016,11 @@ OS-installable package or a common existing system font, consistent
 with treating Tesseract itself as a declared OS-level dependency rather
 than bundling a copy of it.
 
+CI caching: pip is cached (`cache: "pip"` on `setup-python`, see the
+comment in `tests.yml`). Caching the `apt-get` install of Tesseract was
+considered and deliberately deferred — it needs a third-party action or
+manual cache wiring, more moving parts than the time saved is worth.
+
 ### 18. Consistent auto-parse behavior across input sources; show lab interpretation immediately on PDF upload
 
 **Context**: User observation from live use — the four ways to get text
