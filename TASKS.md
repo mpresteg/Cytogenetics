@@ -1633,3 +1633,12 @@ the commit message.
 Done client-side (loop over `/api/parse` per line, `Promise.all`) — see
 README's "Batch mode" section for the reasoning. `main.py` / `iscn_parser.py`
 untouched; only `app.js`, `index.html`, and `style.css` changed.
+
+### Lint / typecheck in CI (deferred, 2026-10-18)
+
+**Context**: CI (`.github/workflows/tests.yml`) runs only the unit tests; there is no linter or type checker, and `iscn_parser.py` is about 1,400 lines.
+
+**Done when**: `ruff` (and optionally a type check) runs in CI and passes. A first run will flag existing style issues; fix them in a separate mechanical PR with the tests as the safety net, and do not change parser behaviour in it.
+
+**Out of scope**: reformatting for its own sake, and any change to clinical content. Revisit when the parser keeps growing or a lint-catchable bug ships.
+
