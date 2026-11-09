@@ -108,6 +108,11 @@ going stale, not just "someone remembers to check eventually."
 
 ## Backlog
 
+### Idea (unnumbered, owner question 2026-11-09): try hosting the parser on Cloudflare Workers
+- **Why:** the app has no database and the parser is pure Python regex, so it is stateless; Workers would remove a free host's sleep-and-wake delay. Unresearched beyond Cloudflare's product page; the rest is from memory.
+- **Limits to check first:** Python Workers are still maturing and run pure-Python packages only. PDF text (`pypdf`, probably fine) and the OCR fallback (task 11: `pytesseract` needs a Tesseract binary, `Pillow` is native) would not run there, so a port could cover only the parse and FHIR-export endpoints plus the static page, and the PDF and OCR paths would need another host or be dropped. Decide whether the app is deployed anywhere today before this matters.
+- **Done when:** the owner drops it, or a throwaway Worker returns the same JSON as `/parse` for the existing parser tests' inputs.
+
 ### 4. Real ISCN edition differences
 
 **Context**: `EDITION_NOTES`, `SUPPORTED_EDITIONS`, `_edition_notes_for()`
